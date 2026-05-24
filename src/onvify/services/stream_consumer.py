@@ -122,10 +122,10 @@ class StreamConsumer:
         )
 
         backoff = self._reconnect_base
+        primary = camera.primary_stream
         while True:
             try:
                 self._manager.set_status(camera.id, CameraStatus.CONNECTING)
-                primary = camera.primary_stream
                 if primary is None:
                     logger.warning("no_primary_stream", camera_id=str(camera.id))
                     return

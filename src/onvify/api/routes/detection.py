@@ -47,7 +47,12 @@ async def list_detection_events(
 
 @router.get("/health")
 async def get_detection_health(backend: InferenceBackendDep, response: Response) -> BackendStatus:
-    backend_status = await backend.health_check()
+    try:
+        backend_status = await backend.health_check()
+    except Exception as exc:
+        response.status_code = http_status.HTTP_503_SERVICE_UNAVAILABLE
+        return BackendStatus(health=BackendHealth.UNAVAILABLE, message=str(exc))
+
     if backend_status.health != BackendHealth.HEALTHY:
         response.status_code = http_status.HTTP_503_SERVICE_UNAVAILABLE
     return backend_status

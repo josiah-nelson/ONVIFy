@@ -25,6 +25,12 @@ class FakeInferenceBackend:
         return self._status
 
 
+class FailingInferenceBackend:
+    async def health_check(self) -> BackendStatus:
+        msg = "backend exploded"
+        raise RuntimeError(msg)
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """Create a test client with isolated database and lifespan."""
@@ -157,21 +163,32 @@ class TestDetectionEndpoints:
             "message": None,
         }
 
-    def test_detection_health_unavailable_returns_503(self, client: TestClient) -> None:
+    @pytest.mark.parametrize("health", [BackendHealth.UNAVAILABLE, BackendHealth.DEGRADED])
+    def test_detection_health_non_healthy_returns_503(self, client: TestClient, health: BackendHealth) -> None:
         self._set_inference_backend(
             client,
             BackendStatus(
-                health=BackendHealth.UNAVAILABLE,
+                health=health,
                 model_name="fake-model",
                 device="test",
-                message="backend offline",
+                message=f"backend {health.value}",
             ),
         )
         response = client.get("/api/detection/health")
 
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert response.json()["health"] == health.value
+        assert response.json()["message"] == f"backend {health.value}"
+
+    def test_detection_health_exception_returns_503(self, client: TestClient) -> None:
+        app = cast(FastAPI, client.app)
+        app.state.inference_backend = FailingInferenceBackend()
+
+        response = client.get("/api/detection/health")
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert response.json()["health"] == "unavailable"
-        assert response.json()["message"] == "backend offline"
+        assert response.json()["message"] == "backend exploded"
 
 
 class TestWebSocket:

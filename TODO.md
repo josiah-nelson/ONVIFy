@@ -4,13 +4,13 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 
 ## Core Functionality
 
-- [ ] **Camera persistence** — Wire `CameraManager` to SQLite via `infrastructure/database.py`. Currently cameras exist only in memory and are lost on restart.
+- [x] **Camera persistence** — Wire `CameraManager` to SQLite via `infrastructure/database.py`. Currently cameras exist only in memory and are lost on restart.
 - [ ] **MediaMTX lifecycle integration** — Connect `streaming.py` to the camera manager so adding/removing a camera automatically updates MediaMTX config and triggers a reload. Download and version-check the MediaMTX binary on first run.
-- [ ] **RTSP frame grabber** — Implement an async frame grabber that pulls frames from RTSP sources (via OpenCV or FFmpeg subprocess) and feeds them into the inference pipeline.
+- [x] **RTSP frame grabber** — Implement an async frame grabber that pulls frames from RTSP sources (via OpenCV or FFmpeg subprocess) and feeds them into the inference pipeline.
 - [ ] **MJPEG frame grabber integration** — Connect `services/mjpeg.py` pull logic to the camera manager so MJPEG cameras automatically start pulling frames on creation.
-- [ ] **MJPEG output endpoint** — Add a FastAPI streaming route (e.g., `GET /api/cameras/{id}/mjpeg`) that serves live MJPEG for browser preview.
+- [x] **MJPEG output endpoint** — Add a FastAPI streaming route (e.g., `GET /api/cameras/{id}/mjpeg`) that serves live MJPEG for browser preview.
 - [ ] **Inference pipeline wiring** — Connect the inference pipeline to the frame grabbers so detection runs automatically on cameras with `ai_enabled=True`. Manage pipeline lifecycle (start/stop/reset) alongside camera state changes.
-- [ ] **Detection event persistence** — Store detection events in SQLite and expose via API (`GET /api/detection/events`).
+- [x] **Detection event persistence** — Store detection events in SQLite and expose via API (`GET /api/detection/events`).
 - [ ] **WebSocket event broadcasting** — Wire the `ConnectionManager` to broadcast detection events and camera status changes as they occur.
 
 ## ONVIF Protocol
@@ -42,7 +42,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 - [ ] **CoreML export pipeline** — Implement automatic YOLO-to-CoreML export and caching on first run for Apple Silicon (the logic exists in the fork and needs to be ported into `local_yolo.py`).
 - [ ] **Process isolation** — Move local YOLO inference into a separate worker process via `multiprocessing` to avoid GIL contention with the async event loop.
 - [ ] **OpenAI-compatible backend testing** — Integration test with a mock server that validates the request format and response parsing.
-- [ ] **Inference health endpoint** — Expose backend health status via `GET /api/detection/health` using the backend's `health_check()` method.
+- [x] **Inference health endpoint** — Expose backend health status via `GET /api/detection/health` using the backend's `health_check()` method.
 - [ ] **Test fixtures** — Record or source short MP4 samples (person, vehicle, static scene, multi-object) and add to `tests/fixtures/`.
 
 ## Packaging and Deployment

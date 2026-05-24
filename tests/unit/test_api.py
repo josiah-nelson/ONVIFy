@@ -8,9 +8,13 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from onvify.inference.protocol import BackendHealth, BackendStatus
 
 
 @pytest.fixture
@@ -121,6 +125,27 @@ class TestDetectionEndpoints:
         response = client.get("/api/detection/events")
         assert response.status_code == 200
         assert response.json() == []
+
+    def test_detection_health(self, client: TestClient) -> None:
+        class FakeBackend:
+            async def health_check(self) -> BackendStatus:
+                return BackendStatus(
+                    health=BackendHealth.HEALTHY,
+                    model_name="fake-model",
+                    device="test",
+                )
+
+        app = cast(FastAPI, client.app)
+        app.state.inference_backend = FakeBackend()
+        response = client.get("/api/detection/health")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "health": "healthy",
+            "model_name": "fake-model",
+            "device": "test",
+            "message": None,
+        }
 
 
 class TestWebSocket:

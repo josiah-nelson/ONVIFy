@@ -7,14 +7,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
-from onvify.api.dependencies import get_database, get_settings
+from onvify.api.dependencies import get_database, get_inference_backend, get_settings
 from onvify.config import Settings
+from onvify.inference.protocol import BackendStatus, InferenceBackend
 from onvify.infrastructure.database import Database
 from onvify.models.detection import DetectionEvent
 
 router = APIRouter()
 
 DatabaseDep = Annotated[Database, Depends(get_database)]
+InferenceBackendDep = Annotated[InferenceBackend, Depends(get_inference_backend)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
@@ -40,3 +42,8 @@ async def list_detection_events(
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> list[DetectionEvent]:
     return await db.list_detection_events(camera_id=camera_id, limit=limit)
+
+
+@router.get("/health")
+async def get_detection_health(backend: InferenceBackendDep) -> BackendStatus:
+    return await backend.health_check()

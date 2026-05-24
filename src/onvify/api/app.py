@@ -10,16 +10,51 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from onvify import __version__
+from onvify.api.dependencies import get_settings
 from onvify.api.routes import cameras, detection, streams, system
+from onvify.api.websocket import ConnectionManager
+from onvify.infrastructure.database import Database
+from onvify.services.camera_manager import CameraManager
+from onvify.services.streaming import MediaMTXManager
 
 logger = structlog.get_logger()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    logger.info("onvify_starting", version=__version__)
+    settings = get_settings()
+
+    # Database
+    db = Database(settings.root_dir / "data" / "onvify.db")
+    await db.connect()
+    app.state.database = db
+
+    # Camera manager — loads persisted cameras from DB
+    manager = CameraManager(database=db)
+    await manager.load_from_database()
+    app.state.camera_manager = manager
+
+    # MediaMTX
+    mediamtx = MediaMTXManager(settings)
+    mediamtx.write_config(manager.list_cameras())
+    app.state.mediamtx = mediamtx
+
+    # WebSocket connection manager
+    app.state.ws_manager = ConnectionManager()
+
+    logger.info(
+        "onvify_started",
+        version=__version__,
+        cameras=len(manager.list_cameras()),
+        inference_backend=settings.inference.backend,
+    )
+
     yield
-    logger.info("onvify_shutting_down")
+
+    # Shutdown
+    mediamtx.stop()
+    await db.disconnect()
+    logger.info("onvify_stopped")
 
 
 def create_app() -> FastAPI:

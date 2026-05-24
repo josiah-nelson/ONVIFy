@@ -34,12 +34,12 @@ class UpdateCameraRequest(BaseModel):
 
 
 @router.get("/")
-def list_cameras(manager: ManagerDep) -> list[Camera]:
+async def list_cameras(manager: ManagerDep) -> list[Camera]:
     return manager.list_cameras()
 
 
 @router.post("/", status_code=201)
-def create_camera(body: CreateCameraRequest, manager: ManagerDep) -> Camera:
+async def create_camera(body: CreateCameraRequest, manager: ManagerDep) -> Camera:
     stream = Stream(url=body.source_url, stream_type=body.stream_type)
     camera = Camera(
         name=body.name,
@@ -49,11 +49,11 @@ def create_camera(body: CreateCameraRequest, manager: ManagerDep) -> Camera:
         onvif_username=body.onvif_username,
         onvif_password=body.onvif_password,
     )
-    return manager.add_camera(camera)
+    return await manager.add_camera(camera)
 
 
 @router.get("/{camera_id}")
-def get_camera(camera_id: UUID, manager: ManagerDep) -> Camera:
+async def get_camera(camera_id: UUID, manager: ManagerDep) -> Camera:
     camera = manager.get_camera(camera_id)
     if camera is None:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -61,19 +61,19 @@ def get_camera(camera_id: UUID, manager: ManagerDep) -> Camera:
 
 
 @router.patch("/{camera_id}")
-def update_camera(camera_id: UUID, body: UpdateCameraRequest, manager: ManagerDep) -> Camera:
+async def update_camera(camera_id: UUID, body: UpdateCameraRequest, manager: ManagerDep) -> Camera:
     updates = body.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     try:
-        return manager.update_camera(camera_id, **updates)
+        return await manager.update_camera(camera_id, **updates)
     except KeyError as err:
         raise HTTPException(status_code=404, detail="Camera not found") from err
 
 
 @router.delete("/{camera_id}", status_code=204)
-def delete_camera(camera_id: UUID, manager: ManagerDep) -> None:
+async def delete_camera(camera_id: UUID, manager: ManagerDep) -> None:
     try:
-        manager.remove_camera(camera_id)
+        await manager.remove_camera(camera_id)
     except KeyError as err:
         raise HTTPException(status_code=404, detail="Camera not found") from err

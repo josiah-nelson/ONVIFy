@@ -18,7 +18,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 
 - [x] **ONVIF SOAP response templates** — Extract and adapt the ONVIF XML templates for GetDeviceInformation, GetProfiles, GetStreamUri, GetCapabilities, and GetScopes. Place in `onvif_xml/`.
 - [x] **ONVIF HTTP server** — Stand up per-camera ONVIF SOAP endpoints that NVRs can query. Each virtual camera needs its own port.
-- [ ] **WS-Discovery implementation** — Implement the UDP multicast listener in `onvif_discovery.py` so NVRs can auto-discover virtual cameras on the network.
+- [x] **WS-Discovery implementation** — Implement the UDP multicast listener in `onvif_discovery.py` so NVRs can auto-discover virtual cameras on the network.
 - [ ] **ONVIF event subscription** — Forward AI detection events as ONVIF motion events so NVRs can trigger recording on detection.
 
 ## Frontend

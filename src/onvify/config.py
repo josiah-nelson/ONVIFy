@@ -14,6 +14,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BITRATE_PATTERN = re.compile(r"^\d+[kKmM]?$")
+_MEDIAMTX_VERSION_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+$")
 _X264_PRESETS = frozenset(
     {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"}
 )
@@ -54,11 +55,22 @@ class StreamingSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="")
 
+    mediamtx_version: str = "v1.18.2"
+    mediamtx_bin: Path | None = None
+    mediamtx_auto_download: bool = True
     grabber_reconnect_base: float = Field(1.0, ge=0.5)
     grabber_reconnect_max: float = Field(30.0, ge=1.0)
     gf_video_bitrate: str = "2500k"
     gf_video_bufsize: str = "5000k"
     gf_encoder_preset: str = "ultrafast"
+
+    @field_validator("mediamtx_version")
+    @classmethod
+    def validate_mediamtx_version(cls, v: str) -> str:
+        if not _MEDIAMTX_VERSION_PATTERN.match(v):
+            msg = f"Invalid MediaMTX version: {v!r}. Expected a semantic version like 'v1.18.2'."
+            raise ValueError(msg)
+        return v if v.startswith("v") else f"v{v}"
 
     @field_validator("gf_video_bitrate", "gf_video_bufsize")
     @classmethod

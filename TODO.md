@@ -6,7 +6,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 
 - [x] **Camera persistence** — Wire `CameraManager` to SQLite via `infrastructure/database.py`. Currently cameras exist only in memory and are lost on restart.
 - [x] **MediaMTX config lifecycle integration** — Connect `streaming.py` to camera mutations so adding/removing a camera automatically updates MediaMTX config and triggers a reload.
-- [ ] **MediaMTX binary management** — Download and version-check the MediaMTX binary on first run.
+- [x] **MediaMTX binary management** — Download and version-check the MediaMTX binary on first run.
 - [x] **RTSP frame grabber** — Implement an async frame grabber that pulls frames from RTSP sources (via OpenCV or FFmpeg subprocess) and feeds them into the inference pipeline.
 - [x] **MJPEG frame grabber integration** — Connect `services/mjpeg.py` pull logic to the camera manager so MJPEG cameras automatically start pulling frames on creation.
 - [x] **MJPEG output endpoint** — Add a FastAPI streaming route (e.g., `GET /api/cameras/{id}/mjpeg`) that serves live MJPEG for browser preview.

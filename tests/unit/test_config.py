@@ -69,8 +69,21 @@ class TestInferenceSettings:
 class TestStreamingSettings:
     def test_defaults(self) -> None:
         s = StreamingSettings()
+        assert s.mediamtx_version == "v1.18.2"
+        assert s.mediamtx_bin is None
+        assert s.mediamtx_auto_download is True
         assert s.gf_video_bitrate == "2500k"
         assert s.gf_encoder_preset == "ultrafast"
+
+    def test_mediamtx_version_normalized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MEDIAMTX_VERSION", "1.18.2")
+        s = StreamingSettings()
+        assert s.mediamtx_version == "v1.18.2"
+
+    def test_invalid_mediamtx_version_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MEDIAMTX_VERSION", "latest")
+        with pytest.raises(ValidationError):
+            StreamingSettings()
 
     def test_valid_bitrate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("GF_VIDEO_BITRATE", "5000k")

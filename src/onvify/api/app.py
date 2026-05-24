@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -16,6 +17,7 @@ from onvify.api.websocket import ConnectionManager
 from onvify.inference.factory import create_inference_backend
 from onvify.infrastructure.database import Database
 from onvify.services.camera_manager import CameraManager
+from onvify.services.mediamtx_binary import resolve_mediamtx_binary
 from onvify.services.stream_consumer import StreamConsumer
 from onvify.services.streaming import MediaMTXManager
 
@@ -36,8 +38,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await manager.load_from_database()
         app.state.camera_manager = manager
 
-        mediamtx = MediaMTXManager(settings)
+        mediamtx_bin = await asyncio.to_thread(resolve_mediamtx_binary, settings)
+        mediamtx = MediaMTXManager(settings, mediamtx_bin=mediamtx_bin)
         mediamtx.write_config(manager.list_cameras())
+        mediamtx.start()
         app.state.mediamtx = mediamtx
 
         ws_manager = ConnectionManager()

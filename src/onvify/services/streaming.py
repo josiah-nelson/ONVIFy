@@ -69,8 +69,8 @@ class MediaMTXManager:
 
         self._process = subprocess.Popen(
             [str(self._bin), str(self._config_path)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         logger.info("mediamtx_started", pid=self._process.pid)
 

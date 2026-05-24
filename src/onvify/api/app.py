@@ -25,10 +25,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
     db = Database(settings.root_dir / "data" / "onvify.db")
-    await db.connect()
-    app.state.database = db
 
     try:
+        await db.connect()
+        app.state.database = db
+
         manager = CameraManager(database=db)
         await manager.load_from_database()
         app.state.camera_manager = manager

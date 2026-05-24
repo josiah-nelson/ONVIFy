@@ -90,10 +90,7 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
         self._transport = transport  # type: ignore[assignment]
 
     def datagram_received(self, data: bytes, addr: tuple[str, int] | tuple[Any, ...]) -> None:
-        try:
-            xml = data.decode("utf-8", errors="replace")
-        except Exception:
-            return
+        xml = data.decode("utf-8", errors="replace")
 
         if not _is_probe(xml):
             return
@@ -124,26 +121,34 @@ class WSDiscoveryResponder:
         self._cameras = [c for c in cameras if c.onvif_port is not None]
 
     async def start(self) -> None:
+        if self._running or self._transport:
+            return
+
         loop = asyncio.get_running_loop()
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        sock.bind(("", WS_DISCOVERY_MULTICAST[1]))
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            sock.bind(("", WS_DISCOVERY_MULTICAST[1]))
 
-        mreq = struct.pack(
-            "4s4s",
-            socket.inet_aton(WS_DISCOVERY_MULTICAST[0]),
-            socket.inet_aton(self._host_ip),
-        )
-        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        sock.setblocking(False)
+            mreq = struct.pack(
+                "4s4s",
+                socket.inet_aton(WS_DISCOVERY_MULTICAST[0]),
+                socket.inet_aton(self._host_ip),
+            )
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            sock.setblocking(False)
 
-        transport, _ = await loop.create_datagram_endpoint(
-            lambda: _DiscoveryProtocol(self),
-            sock=sock,
-        )
+            transport, _ = await loop.create_datagram_endpoint(
+                lambda: _DiscoveryProtocol(self),
+                sock=sock,
+            )
+        except Exception:
+            sock.close()
+            raise
+
         self._transport = transport
         self._running = True
         logger.info("ws_discovery_started", host=self._host_ip, port=WS_DISCOVERY_MULTICAST[1])

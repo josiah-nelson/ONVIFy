@@ -33,6 +33,7 @@ ConsumerDep = Annotated[StreamConsumer, Depends(get_stream_consumer)]
 @router.get("/")
 async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[str, object]]:
     streams: list[dict[str, object]] = []
+    active = consumer.active_cameras
     for cam in manager.list_cameras():
         primary = cam.primary_stream
         streams.append(
@@ -42,7 +43,7 @@ async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[
                 "status": cam.status.value,
                 "stream_type": primary.stream_type.value if primary else None,
                 "source_url": _redact_url(primary.url) if primary else None,
-                "ai_active": cam.id in consumer.active_cameras,
+                "ai_active": cam.id in active,
             }
         )
     return streams
@@ -60,5 +61,5 @@ async def mjpeg_preview(camera_id: UUID, manager: ManagerDep, consumer: Consumer
 
     return StreamingResponse(
         mjpeg_response_stream(queue),
-        media_type="multipart/x-mixed-replace; boundary=--frame",
+        media_type="multipart/x-mixed-replace; boundary=frame",
     )

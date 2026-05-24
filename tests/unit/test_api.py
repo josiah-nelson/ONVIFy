@@ -121,3 +121,9 @@ class TestDetectionEndpoints:
         response = client.get("/api/detection/events")
         assert response.status_code == 200
         assert response.json() == []
+
+
+class TestWebSocket:
+    def test_websocket_connect_disconnect(self, client: TestClient) -> None:
+        with client.websocket_connect("/api/system/ws") as ws:
+            assert ws is not None

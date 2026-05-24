@@ -127,6 +127,7 @@ class StreamConsumer:
             try:
                 self._manager.set_status(camera.id, CameraStatus.CONNECTING)
                 if primary is None:
+                    self._manager.set_status(camera.id, CameraStatus.OFFLINE)
                     logger.warning("no_primary_stream", camera_id=str(camera.id))
                     return
 
@@ -184,6 +185,7 @@ class StreamConsumer:
         assert isinstance(pipeline, InferencePipeline)
         cap = await asyncio.to_thread(cv2.VideoCapture, url)
         if not cap.isOpened():
+            cap.release()
             msg = f"Failed to open RTSP stream: {_safe_url(url)}"
             raise ConnectionError(msg)
 

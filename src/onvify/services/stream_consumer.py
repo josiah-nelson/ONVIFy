@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
 import structlog
@@ -23,6 +24,15 @@ if TYPE_CHECKING:
     from onvify.services.camera_manager import CameraManager
 
 logger = structlog.get_logger()
+
+
+def _safe_url(url: str) -> str:
+    """Redact credentials from a URL for safe use in logs and error messages."""
+    parsed = urlparse(url)
+    if parsed.username:
+        redacted = parsed._replace(netloc=f"***@{parsed.hostname}" + (f":{parsed.port}" if parsed.port else ""))
+        return urlunparse(redacted)
+    return url
 
 
 class StreamConsumer:
@@ -167,7 +177,7 @@ class StreamConsumer:
         assert isinstance(pipeline, InferencePipeline)
         cap = await asyncio.to_thread(cv2.VideoCapture, url)
         if not cap.isOpened():
-            msg = f"Failed to open RTSP stream: {url}"
+            msg = f"Failed to open RTSP stream: {_safe_url(url)}"
             raise ConnectionError(msg)
 
         self._manager.set_status(camera.id, CameraStatus.ONLINE)
@@ -177,7 +187,7 @@ class StreamConsumer:
             while True:
                 ret, frame = await asyncio.to_thread(cap.read)
                 if not ret:
-                    msg = f"RTSP stream ended: {url}"
+                    msg = f"RTSP stream ended: {_safe_url(url)}"
                     raise ConnectionError(msg)
 
                 if queue and not queue.full():

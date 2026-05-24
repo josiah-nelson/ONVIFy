@@ -199,7 +199,10 @@ class StreamConsumer:
                 event = await pipeline.process_frame(frame, camera.id)
                 if event:
                     await self._db.save_detection_event(event)
-                    await self._ws.broadcast_event("detection.event", event.model_dump(mode="json"))
+                    await self._ws.broadcast_event(
+                        "detection.event",
+                        {"event": event.model_dump(mode="json")},
+                    )
 
             await asyncio.sleep(self._target_interval)
 
@@ -234,7 +237,10 @@ class StreamConsumer:
                     event = await pipeline.process_frame(frame, camera.id)
                     if event:
                         await self._db.save_detection_event(event)
-                        await self._ws.broadcast_event("detection.event", event.model_dump(mode="json"))
+                        await self._ws.broadcast_event(
+                            "detection.event",
+                            {"event": event.model_dump(mode="json")},
+                        )
 
                 await asyncio.sleep(self._target_interval)
         finally:

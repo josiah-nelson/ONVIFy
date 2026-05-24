@@ -28,9 +28,10 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 _ACTION_PATTERN = re.compile(
-    r"<\w+:?Body[^>]*>.*?<\w+:?(\w+?)[\s/>]",
+    r"<\w+:?Body[^>]*>.*?<(?:\w+:)?(\w+)[\s/>]",
     re.DOTALL,
 )
+_MAX_REQUEST_BODY = 1 * 1024 * 1024
 _PROFILE_TOKEN_PATTERN = re.compile(
     r"<\w+:?ProfileToken[^>]*>(.*?)</\w+:?ProfileToken>",
 )
@@ -94,6 +95,10 @@ class ONVIFCameraServer:
 
             content_length = int(headers.get("content-length", "0"))
             body = ""
+            if content_length > _MAX_REQUEST_BODY:
+                fault = soap_fault("Sender", "Request body too large")
+                self._write_response(writer, 400, fault)
+                return
             if content_length > 0:
                 raw_body = await asyncio.wait_for(reader.readexactly(content_length), timeout=10.0)
                 body = raw_body.decode("utf-8", errors="replace")
@@ -103,6 +108,7 @@ class ONVIFCameraServer:
         except (TimeoutError, asyncio.IncompleteReadError, ConnectionResetError):
             pass
         except Exception:
+            logger.exception("onvif_unhandled_error", camera_id=str(self._camera.id))
             fault = soap_fault("Receiver", "Internal server error")
             self._write_response(writer, 500, fault)
         finally:
@@ -171,6 +177,5 @@ class ONVIFServerManager:
             await server.stop()
 
     async def stop_all(self) -> None:
-        for server in self._servers.values():
-            await server.stop()
+        await asyncio.gather(*(server.stop() for server in self._servers.values()))
         self._servers.clear()

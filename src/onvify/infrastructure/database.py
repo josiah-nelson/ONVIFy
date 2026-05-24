@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS detection_events (
     backend TEXT,
     frame_width INTEGER,
     frame_height INTEGER,
-    FOREIGN KEY (camera_id) REFERENCES cameras(id)
+    FOREIGN KEY (camera_id) REFERENCES cameras(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_detection_events_camera_ts

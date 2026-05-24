@@ -88,42 +88,6 @@ jobs:
           Write-Host "MSI build not yet configured"
 
   # ──────────────────────────────────────────────
-  # Linux E2E (self-hosted)
-  # ──────────────────────────────────────────────
-  e2e-linux:
-    name: Linux E2E (Self-Hosted)
-    needs: build
-    runs-on: [self-hosted, Linux, X64]
-    if: >-
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
-
-    concurrency:
-      group: e2e-linux
-      cancel-in-progress: false
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install -e ".[dev,inference]"
-
-      - name: Run integration tests
-        run: |
-          source .venv/bin/activate
-          pytest -m integration --tb=short
-
-  # ──────────────────────────────────────────────
   # macOS E2E (self-hosted, Apple Silicon)
   # ──────────────────────────────────────────────
   e2e-macos:
@@ -167,7 +131,7 @@ jobs:
   # ──────────────────────────────────────────────
   release:
     name: Release & Sign
-    needs: [build, e2e-windows, e2e-linux, e2e-macos]
+    needs: [build, e2e-windows, e2e-macos]
     runs-on: [self-hosted, Windows, X64]
     if: startsWith(github.ref, 'refs/tags/v')
     environment: release

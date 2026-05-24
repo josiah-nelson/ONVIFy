@@ -22,6 +22,7 @@ from onvify.api.routes.cameras import (
     delete_camera,
     update_camera,
 )
+from onvify.api.websocket import ConnectionManager
 from onvify.inference.protocol import BackendHealth, BackendStatus
 from onvify.models.camera import Camera, Stream, StreamType
 from onvify.services.camera_manager import CameraManager
@@ -211,6 +212,7 @@ class TestCameraEndpoints:
                 manager,
                 cast(MediaMTXManager, mediamtx),
                 cast(StreamConsumer, consumer),
+                ConnectionManager(),
             )
 
         assert mediamtx.reload_attempts == 2
@@ -306,6 +308,7 @@ class TestCameraEndpoints:
                 manager,
                 cast(MediaMTXManager, mediamtx),
                 cast(StreamConsumer, consumer),
+                ConnectionManager(),
             )
 
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
@@ -338,6 +341,7 @@ class TestCameraEndpoints:
                 manager,
                 cast(MediaMTXManager, mediamtx),
                 cast(StreamConsumer, consumer),
+                ConnectionManager(),
             )
 
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
@@ -371,6 +375,7 @@ class TestCameraEndpoints:
                 manager,
                 cast(MediaMTXManager, mediamtx),
                 cast(StreamConsumer, consumer),
+                ConnectionManager(),
             )
 
         assert mediamtx.reload_attempts == 2
@@ -434,6 +439,7 @@ class TestCameraEndpoints:
                 manager,
                 cast(MediaMTXManager, mediamtx),
                 cast(StreamConsumer, consumer),
+                ConnectionManager(),
             )
 
         assert mediamtx.reload_camera_counts == [0, 1]
@@ -464,6 +470,7 @@ class TestCameraEndpoints:
                 manager,
                 cast(MediaMTXManager, mediamtx),
                 cast(StreamConsumer, consumer),
+                ConnectionManager(),
             )
 
         assert mediamtx.reload_attempts == 2

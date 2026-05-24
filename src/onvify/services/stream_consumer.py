@@ -129,6 +129,13 @@ class StreamConsumer:
         self._tasks.clear()
         self._frame_queues.clear()
 
+    async def _set_status(self, camera_id: UUID, status: CameraStatus) -> None:
+        self._manager.set_status(camera_id, status)
+        await self._ws.broadcast_event(
+            "camera.status",
+            {"camera_id": str(camera_id), "status": status.value},
+        )
+
     async def _consume_loop(self, camera: Camera) -> None:
         from onvify.inference.pipeline import InferencePipeline
 
@@ -145,9 +152,9 @@ class StreamConsumer:
         primary = camera.primary_stream
         while True:
             try:
-                self._manager.set_status(camera.id, CameraStatus.CONNECTING)
+                await self._set_status(camera.id, CameraStatus.CONNECTING)
                 if primary is None:
-                    self._manager.set_status(camera.id, CameraStatus.OFFLINE)
+                    await self._set_status(camera.id, CameraStatus.OFFLINE)
                     logger.warning("no_primary_stream", camera_id=str(camera.id))
                     return
 
@@ -157,10 +164,10 @@ class StreamConsumer:
                     await self._consume_rtsp(camera, primary.url, pipeline)
 
             except asyncio.CancelledError:
-                self._manager.set_status(camera.id, CameraStatus.OFFLINE)
+                await self._set_status(camera.id, CameraStatus.OFFLINE)
                 return
             except Exception as exc:
-                self._manager.set_status(camera.id, CameraStatus.ERROR)
+                await self._set_status(camera.id, CameraStatus.ERROR)
                 safe = _safe_url(primary.url) if primary else "unknown"
                 logger.error(
                     "stream_consumer_error",
@@ -179,7 +186,7 @@ class StreamConsumer:
     async def _consume_mjpeg(self, camera: Camera, url: str, pipeline: InferencePipeline | None) -> None:
         from onvify.services.mjpeg import decode_jpeg_frame, pull_mjpeg_frames
 
-        self._manager.set_status(camera.id, CameraStatus.ONLINE)
+        await self._set_status(camera.id, CameraStatus.ONLINE)
         queue = self._frame_queues.get(camera.id)
 
         async for jpeg_bytes in pull_mjpeg_frames(url):
@@ -192,7 +199,7 @@ class StreamConsumer:
                 event = await pipeline.process_frame(frame, camera.id)
                 if event:
                     await self._db.save_detection_event(event)
-                    await self._ws.broadcast(event.model_dump(mode="json"))
+                    await self._ws.broadcast_event("detection.event", event.model_dump(mode="json"))
 
             await asyncio.sleep(self._target_interval)
 
@@ -205,7 +212,7 @@ class StreamConsumer:
             msg = f"Failed to open RTSP stream: {_safe_url(url)}"
             raise ConnectionError(msg)
 
-        self._manager.set_status(camera.id, CameraStatus.ONLINE)
+        await self._set_status(camera.id, CameraStatus.ONLINE)
         queue = self._frame_queues.get(camera.id)
 
         try:
@@ -227,7 +234,7 @@ class StreamConsumer:
                     event = await pipeline.process_frame(frame, camera.id)
                     if event:
                         await self._db.save_detection_event(event)
-                        await self._ws.broadcast(event.model_dump(mode="json"))
+                        await self._ws.broadcast_event("detection.event", event.model_dump(mode="json"))
 
                 await asyncio.sleep(self._target_interval)
         finally:

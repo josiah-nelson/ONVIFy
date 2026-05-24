@@ -27,7 +27,7 @@ def make_consumer(manager: CameraManager) -> IdleStreamConsumer:
         camera_manager=manager,
         backend=cast(InferenceBackend, object()),
         database=cast(Database, object()),
-        ws_manager=cast(ConnectionManager, object()),
+        ws_manager=ConnectionManager(),
     )
 
 
@@ -88,6 +88,43 @@ class TestStreamConsumerLifecycle:
         assert consumer.active_ai_cameras == {camera.id}
         assert consumer.get_frame_queue(camera.id) is not None
         await consumer.stop_all_async()
+
+    @pytest.mark.asyncio
+    async def test_status_change_broadcasts_via_websocket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        manager = CameraManager()
+        camera = Camera(
+            name="MJPEG",
+            source_streams=[Stream(url="http://example.test/mjpeg", stream_type=StreamType.MJPEG)],
+        )
+        await manager.add_camera(camera)
+
+        broadcasts: list[dict[str, object]] = []
+        ws = ConnectionManager()
+
+        async def record_broadcast(event: dict[str, object]) -> None:
+            broadcasts.append(event)
+
+        monkeypatch.setattr(ws, "broadcast", record_broadcast)
+        consumer = StreamConsumer(
+            camera_manager=manager,
+            backend=cast(InferenceBackend, object()),
+            database=cast(Database, object()),
+            ws_manager=ws,
+        )
+        consumer._target_interval = 0
+        consumer._frame_queues[camera.id] = asyncio.Queue(maxsize=2)
+
+        async def pull_one_frame(url: str) -> AsyncIterator[bytes]:
+            yield b"jpeg"
+
+        monkeypatch.setattr(mjpeg, "pull_mjpeg_frames", pull_one_frame)
+
+        await consumer._consume_mjpeg(camera, "http://example.test/mjpeg", None)
+
+        status_events = [e for e in broadcasts if e.get("type") == "camera.status"]
+        assert len(status_events) == 1
+        assert status_events[0]["camera_id"] == str(camera.id)
+        assert status_events[0]["status"] == "online"
 
     @pytest.mark.asyncio
     async def test_mjpeg_preview_without_pipeline_does_not_decode_frames(self, monkeypatch: pytest.MonkeyPatch) -> None:

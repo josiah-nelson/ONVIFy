@@ -28,7 +28,7 @@ async def health_check(manager: ManagerDep, consumer: ConsumerDep) -> dict[str, 
         "version": __version__,
         "cameras_total": len(cameras),
         "cameras_online": sum(1 for c in cameras if c.status == CameraStatus.ONLINE),
-        "ai_consumers_active": len(consumer.active_cameras),
+        "ai_consumers_active": len(consumer.active_ai_cameras),
     }
 
 

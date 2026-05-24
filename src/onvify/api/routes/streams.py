@@ -34,6 +34,7 @@ ConsumerDep = Annotated[StreamConsumer, Depends(get_stream_consumer)]
 async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[str, object]]:
     streams: list[dict[str, object]] = []
     active = consumer.active_cameras
+    ai_active = consumer.active_ai_cameras
     for cam in manager.list_cameras():
         primary = cam.primary_stream
         streams.append(
@@ -43,7 +44,8 @@ async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[
                 "status": cam.status.value,
                 "stream_type": primary.stream_type.value if primary else None,
                 "source_url": _redact_url(primary.url) if primary else None,
-                "ai_active": cam.id in active,
+                "consumer_active": cam.id in active,
+                "ai_active": cam.id in ai_active,
             }
         )
     return streams

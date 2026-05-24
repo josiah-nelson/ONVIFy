@@ -1,0 +1,135 @@
+name: Enterprise Hardening Workstream
+description: Use this for technical debt themes that must be raised to an enterprise production standard.
+title: "[Enterprise Hardening] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when the problem is bigger than a single bug.
+
+        Good examples:
+        - Inconsistent error handling across API endpoints
+        - Missing observability in the inference pipeline
+        - Platform-specific code leaking into business logic
+        - Stale tests that don't reflect current behavior
+
+        The goal is to turn scattered symptoms into one explicit hardening workstream.
+
+  - type: input
+    id: workstream_name
+    attributes:
+      label: Workstream Name
+      description: Short name for the hardening effort.
+      placeholder: Inference pipeline observability
+    validations:
+      required: true
+
+  - type: dropdown
+    id: domains
+    attributes:
+      label: Domain
+      description: Select the main areas this workstream touches.
+      multiple: true
+      options:
+        - Streaming / RTSP / MJPEG
+        - ONVIF Protocol
+        - AI / Inference
+        - Testing / CI
+        - Deployment / Packaging
+        - Documentation / Standards
+        - Performance / Scalability
+        - Security / Auth
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptom_cluster
+    attributes:
+      label: Symptom Cluster
+      description: Describe the concrete issues that indicate a deeper debt pattern.
+      placeholder: |
+        Example:
+        - Inference failures are silently swallowed
+        - No metrics on inference latency or throughput
+        - Motion gate sensitivity changes don't log
+    validations:
+      required: true
+
+  - type: textarea
+    id: root_cause
+    attributes:
+      label: Suspected Root Cause
+      description: What underlying debt or missing standard produced these symptoms?
+      placeholder: |
+        Example:
+        Observability was not part of the initial scaffold — inference code logs minimally and emits no metrics.
+    validations:
+      required: true
+
+  - type: textarea
+    id: target_standard
+    attributes:
+      label: Target Enterprise Standard
+      description: Define the expected end state in operational and engineering terms.
+      placeholder: |
+        Example:
+        - Every inference call emits a structured log with latency and result count
+        - Prometheus metrics exported for inference latency, throughput, and error rate
+        - Health endpoint reflects inference backend status
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_examples
+    attributes:
+      label: Current Examples
+      description: Include concrete code paths, runtime observations, or screenshots that show the debt in practice.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: deliverables
+    attributes:
+      label: Required Deliverables
+      description: Check all deliverables this workstream should produce.
+      options:
+        - label: Scope and design doc or ADR
+        - label: Clear implementation standard for future contributors
+        - label: Inventory of affected code paths
+        - label: Test plan and CI stage ownership
+        - label: Metrics or observability plan
+        - label: Rollout and backout plan
+        - label: Deprecation or pruning plan for stale assets
+        - label: Migration plan for existing data or config
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Define what must be true before this workstream is considered complete.
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurement
+    attributes:
+      label: Measurement and Validation
+      description: How will we prove the hardening work actually improved the system?
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks If Left Unaddressed
+      description: Describe the operational, security, performance, or supportability risk.
+    validations:
+      required: true
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related Files, Issues, or Follow-On Work
+      description: Link related issues, docs, or implementation tasks.

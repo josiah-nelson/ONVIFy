@@ -1,0 +1,28 @@
+[Unit]
+Description=ONVIFy - ONVIF/RTSP Virtual Camera Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=onvify
+Group=onvify
+WorkingDirectory=/opt/onvify
+ExecStart=/opt/onvify/.venv/bin/onvify --log-format json
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/onvify/data
+PrivateTmp=true
+
+# File descriptor limits for high camera counts
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

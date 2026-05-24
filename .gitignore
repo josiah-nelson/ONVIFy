@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+*.pem
+*.key
+
+# ONVIFy runtime
+camera_config.json
+mediamtx.yml
+*.db
+*.db-wal
+*.db-shm
+
+# AI/ML
+.coreml_cache/
+.ultralytics/
+*.pt
+*.onnx
+*.mlpackage/
+*.mlmodel
+
+# MediaMTX binary
+mediamtx
+mediamtx.exe
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Node/Frontend
+node_modules/
+frontend/dist/
+
+# Packaging artifacts
+packaging/windows/*.msi
+packaging/windows/*.wixobj
+packaging/windows/*.wixpdb

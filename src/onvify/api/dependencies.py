@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from onvify.api.websocket import ConnectionManager
     from onvify.infrastructure.database import Database
     from onvify.services.camera_manager import CameraManager
+    from onvify.services.stream_consumer import StreamConsumer
     from onvify.services.streaming import MediaMTXManager
 
 
@@ -39,3 +40,7 @@ def get_mediamtx_manager(request: Request) -> MediaMTXManager:
 
 def get_ws_manager(request: Request) -> ConnectionManager:
     return request.app.state.ws_manager  # type: ignore[no-any-return]
+
+
+def get_stream_consumer(request: Request) -> StreamConsumer:
+    return request.app.state.stream_consumer  # type: ignore[no-any-return]

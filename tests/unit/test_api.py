@@ -9,12 +9,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
+from uuid import UUID
 
 import pytest
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
 
 from onvify.inference.protocol import BackendHealth, BackendStatus
+from onvify.models.camera import Camera, StreamType
 
 
 class FakeInferenceBackend:
@@ -31,6 +33,42 @@ class FailingInferenceBackend:
         raise RuntimeError(msg)
 
 
+class RecordingMediaMTXManager:
+    def __init__(self) -> None:
+        self.reload_camera_counts: list[int] = []
+        self.stopped = False
+
+    def reload_config(self, cameras: list[Camera]) -> None:
+        self.reload_camera_counts.append(len(cameras))
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+class RecordingStreamConsumer:
+    def __init__(self) -> None:
+        self.started: list[UUID] = []
+        self.stopped: list[UUID] = []
+
+    @property
+    def active_cameras(self) -> set[UUID]:
+        return set(self.started) - set(self.stopped)
+
+    @property
+    def active_ai_cameras(self) -> set[UUID]:
+        return set()
+
+    def start_camera(self, camera: Camera) -> None:
+        if camera.ai_enabled or camera.stream_type == StreamType.MJPEG:
+            self.started.append(camera.id)
+
+    def stop_camera(self, camera_id: UUID) -> None:
+        self.stopped.append(camera_id)
+
+    async def stop_all_async(self) -> None:
+        return None
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """Create a test client with isolated database and lifespan."""
@@ -44,6 +82,17 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     with TestClient(app) as c:
         yield c
     get_settings.cache_clear()
+
+
+def install_recording_lifecycle_services(
+    client: TestClient,
+) -> tuple[RecordingMediaMTXManager, RecordingStreamConsumer]:
+    app = cast(FastAPI, client.app)
+    mediamtx = RecordingMediaMTXManager()
+    consumer = RecordingStreamConsumer()
+    app.state.mediamtx = mediamtx
+    app.state.stream_consumer = consumer
+    return mediamtx, consumer
 
 
 class TestSystemEndpoints:
@@ -83,6 +132,7 @@ class TestCameraEndpoints:
         assert data["status"] == "offline"
 
     def test_create_mjpeg_camera(self, client: TestClient) -> None:
+        install_recording_lifecycle_services(client)
         response = client.post(
             "/api/cameras/",
             json={
@@ -94,6 +144,79 @@ class TestCameraEndpoints:
         assert response.status_code == 201
         data = response.json()
         assert data["source_streams"][0]["stream_type"] == "mjpeg"
+
+    def test_create_camera_reloads_mediamtx(self, client: TestClient) -> None:
+        mediamtx, consumer = install_recording_lifecycle_services(client)
+        response = client.post(
+            "/api/cameras/",
+            json={"name": "Lifecycle", "source_url": "rtsp://192.168.1.100:554/stream1"},
+        )
+
+        assert response.status_code == 201
+        assert mediamtx.reload_camera_counts == [1]
+        assert consumer.started == []
+
+    def test_create_ai_camera_starts_consumer(self, client: TestClient) -> None:
+        mediamtx, consumer = install_recording_lifecycle_services(client)
+        response = client.post(
+            "/api/cameras/",
+            json={
+                "name": "AI Cam",
+                "source_url": "rtsp://192.168.1.100:554/stream1",
+                "ai_enabled": True,
+            },
+        )
+        camera_id = UUID(response.json()["id"])
+
+        assert mediamtx.reload_camera_counts == [1]
+        assert consumer.started == [camera_id]
+
+    def test_create_mjpeg_camera_starts_consumer(self, client: TestClient) -> None:
+        _, consumer = install_recording_lifecycle_services(client)
+        response = client.post(
+            "/api/cameras/",
+            json={
+                "name": "MJPEG Lifecycle",
+                "source_url": "http://192.168.1.101/mjpeg",
+                "stream_type": "mjpeg",
+            },
+        )
+        camera_id = UUID(response.json()["id"])
+
+        assert consumer.started == [camera_id]
+
+    def test_update_camera_restarts_consumer_and_reloads_mediamtx(self, client: TestClient) -> None:
+        mediamtx, consumer = install_recording_lifecycle_services(client)
+        response = client.post(
+            "/api/cameras/",
+            json={"name": "AI", "source_url": "rtsp://x", "ai_enabled": True},
+        )
+        camera_id = UUID(response.json()["id"])
+        mediamtx.reload_camera_counts.clear()
+        consumer.started.clear()
+
+        response = client.patch(f"/api/cameras/{camera_id}", json={"name": "AI Updated"})
+
+        assert response.status_code == 200
+        assert mediamtx.reload_camera_counts == [1]
+        assert consumer.stopped == [camera_id]
+        assert consumer.started == [camera_id]
+
+    def test_delete_camera_stops_consumer_and_reloads_mediamtx(self, client: TestClient) -> None:
+        mediamtx, consumer = install_recording_lifecycle_services(client)
+        response = client.post(
+            "/api/cameras/",
+            json={"name": "AI", "source_url": "rtsp://x", "ai_enabled": True},
+        )
+        camera_id = UUID(response.json()["id"])
+        mediamtx.reload_camera_counts.clear()
+        consumer.stopped.clear()
+
+        response = client.delete(f"/api/cameras/{camera_id}")
+
+        assert response.status_code == 204
+        assert consumer.stopped == [camera_id]
+        assert mediamtx.reload_camera_counts == [0]
 
     def test_get_missing_camera(self, client: TestClient) -> None:
         response = client.get("/api/cameras/00000000-0000-0000-0000-000000000000")

@@ -19,6 +19,7 @@ from onvify.models.camera import Camera, CameraStatus, StreamType
 
 if TYPE_CHECKING:
     from onvify.api.websocket import ConnectionManager
+    from onvify.inference.pipeline import InferencePipeline
     from onvify.inference.protocol import InferenceBackend
     from onvify.infrastructure.database import Database
     from onvify.services.camera_manager import CameraManager
@@ -36,7 +37,7 @@ def _safe_url(url: str) -> str:
 
 
 class StreamConsumer:
-    """Manages frame-pulling tasks for all AI-enabled cameras."""
+    """Manages frame-pulling tasks for AI-enabled cameras and MJPEG previews."""
 
     def __init__(
         self,
@@ -68,13 +69,22 @@ class StreamConsumer:
     def active_cameras(self) -> set[UUID]:
         return {cid for cid, task in self._tasks.items() if not task.done()}
 
+    @property
+    def active_ai_cameras(self) -> set[UUID]:
+        active: set[UUID] = set()
+        for camera_id in self.active_cameras:
+            camera = self._manager.get_camera(camera_id)
+            if camera and camera.ai_enabled:
+                active.add(camera_id)
+        return active
+
     def get_frame_queue(self, camera_id: UUID) -> asyncio.Queue[bytes] | None:
         return self._frame_queues.get(camera_id)
 
     def start_camera(self, camera: Camera) -> None:
         if camera.id in self._tasks and not self._tasks[camera.id].done():
             return
-        if not camera.ai_enabled:
+        if not self._should_consume(camera):
             return
         self._frame_queues[camera.id] = asyncio.Queue(maxsize=2)
         task = asyncio.create_task(
@@ -101,6 +111,9 @@ class StreamConsumer:
         for camera in self._manager.list_cameras():
             self.start_camera(camera)
 
+    def _should_consume(self, camera: Camera) -> bool:
+        return camera.ai_enabled or camera.stream_type == StreamType.MJPEG
+
     async def stop_all_async(self) -> None:
         """Cancel all tasks and wait for them to finish."""
         tasks = list(self._tasks.values())
@@ -114,12 +127,14 @@ class StreamConsumer:
     async def _consume_loop(self, camera: Camera) -> None:
         from onvify.inference.pipeline import InferencePipeline
 
-        pipeline = InferencePipeline(
-            backend=self._backend,
-            motion_sensitivity=self._motion_sensitivity,
-            confidence_threshold=self._confidence_threshold,
-            cooldown_seconds=self._cooldown_seconds,
-        )
+        pipeline: InferencePipeline | None = None
+        if camera.ai_enabled:
+            pipeline = InferencePipeline(
+                backend=self._backend,
+                motion_sensitivity=self._motion_sensitivity,
+                confidence_threshold=self._confidence_threshold,
+                cooldown_seconds=self._cooldown_seconds,
+            )
 
         backoff = self._reconnect_base
         primary = camera.primary_stream
@@ -151,15 +166,14 @@ class StreamConsumer:
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, self._reconnect_max)
-                pipeline.reset()
+                if pipeline:
+                    pipeline.reset()
             else:
                 backoff = self._reconnect_base
 
-    async def _consume_mjpeg(self, camera: Camera, url: str, pipeline: object) -> None:
-        from onvify.inference.pipeline import InferencePipeline
+    async def _consume_mjpeg(self, camera: Camera, url: str, pipeline: InferencePipeline | None) -> None:
         from onvify.services.mjpeg import decode_jpeg_frame, pull_mjpeg_frames
 
-        assert isinstance(pipeline, InferencePipeline)
         self._manager.set_status(camera.id, CameraStatus.ONLINE)
         queue = self._frame_queues.get(camera.id)
 
@@ -170,19 +184,17 @@ class StreamConsumer:
                 with contextlib.suppress(asyncio.QueueFull):
                     queue.put_nowait(jpeg_bytes)
 
-            event = await pipeline.process_frame(frame, camera.id)
-            if event:
-                await self._db.save_detection_event(event)
-                await self._ws.broadcast(event.model_dump(mode="json"))
+            if pipeline:
+                event = await pipeline.process_frame(frame, camera.id)
+                if event:
+                    await self._db.save_detection_event(event)
+                    await self._ws.broadcast(event.model_dump(mode="json"))
 
             await asyncio.sleep(self._target_interval)
 
-    async def _consume_rtsp(self, camera: Camera, url: str, pipeline: object) -> None:
+    async def _consume_rtsp(self, camera: Camera, url: str, pipeline: InferencePipeline | None) -> None:
         import cv2
 
-        from onvify.inference.pipeline import InferencePipeline
-
-        assert isinstance(pipeline, InferencePipeline)
         cap = await asyncio.to_thread(cv2.VideoCapture, url)
         if not cap.isOpened():
             cap.release()
@@ -207,10 +219,11 @@ class StreamConsumer:
                         with contextlib.suppress(asyncio.QueueFull):
                             queue.put_nowait(jpeg_bytes.tobytes())
 
-                event = await pipeline.process_frame(frame, camera.id)
-                if event:
-                    await self._db.save_detection_event(event)
-                    await self._ws.broadcast(event.model_dump(mode="json"))
+                if pipeline:
+                    event = await pipeline.process_frame(frame, camera.id)
+                    if event:
+                        await self._db.save_detection_event(event)
+                        await self._ws.broadcast(event.model_dump(mode="json"))
 
                 await asyncio.sleep(self._target_interval)
         finally:

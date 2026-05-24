@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "onvify_started",
             version=__version__,
             cameras=len(manager.list_cameras()),
-            ai_cameras=len(consumer.active_cameras),
+            ai_cameras=len(consumer.active_ai_cameras),
             inference_backend=settings.inference.backend,
         )
 

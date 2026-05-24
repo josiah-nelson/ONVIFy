@@ -68,6 +68,11 @@ Main Process (FastAPI + Uvicorn)
     └── RTSP stream routing
 ```
 
+At startup ONVIFy resolves a MediaMTX binary by using `MEDIAMTX_BIN` when set, or
+by downloading the configured `MEDIAMTX_VERSION` release into `data/bin/mediamtx/`.
+The binary is version-checked with `mediamtx --version` before the managed
+subprocess is started.
+
 ### Tech Stack
 
 | Layer | Technology |

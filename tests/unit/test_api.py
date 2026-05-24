@@ -91,6 +91,7 @@ class RecordingStreamConsumer:
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """Create a test client with isolated database and lifespan."""
     monkeypatch.setenv("AI_BACKEND", "local")
+    monkeypatch.setenv("MEDIAMTX_AUTO_DOWNLOAD", "false")
     monkeypatch.setenv("ROOT_DIR", str(tmp_path))
     from onvify.api.app import create_app
     from onvify.api.dependencies import get_settings

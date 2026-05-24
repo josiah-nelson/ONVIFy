@@ -11,7 +11,7 @@ Get ONVIFy running locally in development mode.
 | Python | 3.11+ | `python3 --version` |
 | pip | Latest | `pip --version` |
 | Node.js | 20+ | `node --version` (for frontend, optional) |
-| MediaMTX | 1.18+ | Optional, for RTSP streaming |
+| MediaMTX | 1.18+ | Auto-downloaded by default; optional if `MEDIAMTX_BIN` is set |
 
 ---
 
@@ -47,6 +47,11 @@ cp .env.example .env
 ```
 
 All settings have sensible defaults. The server starts with zero configuration.
+
+By default ONVIFy downloads the configured MediaMTX release into `data/bin/mediamtx/`
+on first run and verifies `mediamtx --version` before starting it. Set
+`MEDIAMTX_AUTO_DOWNLOAD=false` to disable this, or `MEDIAMTX_BIN=/path/to/mediamtx`
+to use a preinstalled binary.
 
 ---
 

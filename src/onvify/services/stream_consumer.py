@@ -183,13 +183,12 @@ class StreamConsumer:
         queue = self._frame_queues.get(camera.id)
 
         async for jpeg_bytes in pull_mjpeg_frames(url):
-            frame = decode_jpeg_frame(jpeg_bytes)
-
             if queue and not queue.full():
                 with contextlib.suppress(asyncio.QueueFull):
                     queue.put_nowait(jpeg_bytes)
 
             if pipeline:
+                frame = decode_jpeg_frame(jpeg_bytes)
                 event = await pipeline.process_frame(frame, camera.id)
                 if event:
                     await self._db.save_detection_event(event)

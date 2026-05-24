@@ -15,7 +15,13 @@ import pytest
 from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
-from onvify.api.routes.cameras import UpdateCameraRequest, delete_camera, update_camera
+from onvify.api.routes.cameras import (
+    CreateCameraRequest,
+    UpdateCameraRequest,
+    create_camera,
+    delete_camera,
+    update_camera,
+)
 from onvify.inference.protocol import BackendHealth, BackendStatus
 from onvify.models.camera import Camera, Stream, StreamType
 from onvify.services.camera_manager import CameraManager
@@ -182,6 +188,34 @@ class TestCameraEndpoints:
         assert client.get("/api/cameras/").json() == []
         assert consumer.started == []
 
+    @pytest.mark.asyncio
+    async def test_create_camera_persistence_error_preserved_when_rollback_fails(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        manager = CameraManager()
+        mediamtx = RecordingMediaMTXManager()
+        mediamtx.fail_on_reload_attempts = {2}
+        consumer = RecordingStreamConsumer()
+
+        async def fail_add(camera: Camera) -> Camera:
+            msg = "db create failed"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(manager, "add_camera", fail_add)
+
+        with pytest.raises(RuntimeError, match="db create failed"):
+            await create_camera(
+                CreateCameraRequest(name="AI", source_url="rtsp://x", ai_enabled=True),
+                manager,
+                cast(MediaMTXManager, mediamtx),
+                cast(StreamConsumer, consumer),
+            )
+
+        assert mediamtx.reload_attempts == 2
+        assert mediamtx.reload_camera_counts == [1]
+        assert consumer.started == []
+
     def test_create_ai_camera_starts_consumer(self, client: TestClient) -> None:
         mediamtx, consumer = install_recording_lifecycle_services(client)
         response = client.post(
@@ -311,6 +345,38 @@ class TestCameraEndpoints:
         assert consumer.started == []
         assert consumer.stopped == []
 
+    @pytest.mark.asyncio
+    async def test_update_camera_persistence_error_preserved_when_rollback_fails(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        manager = CameraManager()
+        camera = Camera(name="AI", source_streams=[Stream(url="rtsp://x")], ai_enabled=True)
+        await manager.add_camera(camera)
+        mediamtx = RecordingMediaMTXManager()
+        mediamtx.fail_on_reload_attempts = {2}
+        consumer = RecordingStreamConsumer()
+
+        async def fail_update(camera_id: UUID, **kwargs: object) -> Camera:
+            msg = "db update failed"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(manager, "update_camera", fail_update)
+
+        with pytest.raises(RuntimeError, match="db update failed"):
+            await update_camera(
+                camera.id,
+                UpdateCameraRequest(name="AI Updated"),
+                manager,
+                cast(MediaMTXManager, mediamtx),
+                cast(StreamConsumer, consumer),
+            )
+
+        assert mediamtx.reload_attempts == 2
+        assert mediamtx.reload_camera_counts == [1]
+        assert consumer.started == []
+        assert consumer.stopped == []
+
     def test_delete_camera_stops_consumer_and_reloads_mediamtx(self, client: TestClient) -> None:
         mediamtx, consumer = install_recording_lifecycle_services(client)
         response = client.post(
@@ -370,6 +436,37 @@ class TestCameraEndpoints:
             )
 
         assert mediamtx.reload_camera_counts == [0, 1]
+        assert manager.get_camera(camera.id) is not None
+        assert consumer.stopped == []
+
+    @pytest.mark.asyncio
+    async def test_delete_camera_persistence_error_preserved_when_rollback_fails(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        manager = CameraManager()
+        camera = Camera(name="AI", source_streams=[Stream(url="rtsp://x")], ai_enabled=True)
+        await manager.add_camera(camera)
+        mediamtx = RecordingMediaMTXManager()
+        mediamtx.fail_on_reload_attempts = {2}
+        consumer = RecordingStreamConsumer()
+
+        async def fail_remove(camera_id: UUID) -> Camera:
+            msg = "db delete failed"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(manager, "remove_camera", fail_remove)
+
+        with pytest.raises(RuntimeError, match="db delete failed"):
+            await delete_camera(
+                camera.id,
+                manager,
+                cast(MediaMTXManager, mediamtx),
+                cast(StreamConsumer, consumer),
+            )
+
+        assert mediamtx.reload_attempts == 2
+        assert mediamtx.reload_camera_counts == [0]
         assert manager.get_camera(camera.id) is not None
         assert consumer.stopped == []
 

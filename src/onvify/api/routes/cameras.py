@@ -49,6 +49,23 @@ async def _reload_mediamtx(mediamtx: MediaMTXManager, cameras: list[Camera]) -> 
         raise HTTPException(status_code=500, detail="MediaMTX config reload failed") from exc
 
 
+async def _rollback_mediamtx(
+    mediamtx: MediaMTXManager,
+    cameras: list[Camera],
+    operation: str,
+    camera_id: UUID,
+) -> None:
+    try:
+        await _reload_mediamtx(mediamtx, cameras)
+    except HTTPException as exc:
+        logger.error(
+            "mediamtx_rollback_failed",
+            operation=operation,
+            camera_id=str(camera_id),
+            detail=exc.detail,
+        )
+
+
 def _replace_camera(cameras: list[Camera], replacement: Camera) -> list[Camera]:
     return [replacement if camera.id == replacement.id else camera for camera in cameras]
 
@@ -78,7 +95,7 @@ async def create_camera(
     try:
         created = await manager.add_camera(camera)
     except Exception:
-        await _reload_mediamtx(mediamtx, manager.list_cameras())
+        await _rollback_mediamtx(mediamtx, manager.list_cameras(), "create", camera.id)
         raise
     consumer.start_camera(created)
     return created
@@ -111,13 +128,10 @@ async def update_camera(
     try:
         updated = await manager.update_camera(camera_id, **updates)
     except KeyError as err:
-        try:
-            await _reload_mediamtx(mediamtx, manager.list_cameras())
-        except HTTPException:
-            logger.error("mediamtx_update_missing_camera_rollback_failed", camera_id=str(camera_id))
+        await _rollback_mediamtx(mediamtx, manager.list_cameras(), "update_missing", camera_id)
         raise HTTPException(status_code=404, detail="Camera not found") from err
     except Exception:
-        await _reload_mediamtx(mediamtx, manager.list_cameras())
+        await _rollback_mediamtx(mediamtx, manager.list_cameras(), "update", camera_id)
         raise
     consumer.stop_camera(camera_id)
     consumer.start_camera(updated)
@@ -136,6 +150,6 @@ async def delete_camera(camera_id: UUID, manager: ManagerDep, mediamtx: MediaMTX
     except KeyError as err:
         raise HTTPException(status_code=404, detail="Camera not found") from err
     except Exception:
-        await _reload_mediamtx(mediamtx, manager.list_cameras())
+        await _rollback_mediamtx(mediamtx, manager.list_cameras(), "delete", camera_id)
         raise
     consumer.stop_camera(camera_id)

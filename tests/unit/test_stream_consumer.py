@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from typing import cast
 
 import pytest
@@ -11,6 +12,7 @@ from onvify.api.websocket import ConnectionManager
 from onvify.inference.protocol import InferenceBackend
 from onvify.infrastructure.database import Database
 from onvify.models.camera import Camera, Stream, StreamType
+from onvify.services import mjpeg
 from onvify.services.camera_manager import CameraManager
 from onvify.services.stream_consumer import StreamConsumer
 
@@ -86,3 +88,30 @@ class TestStreamConsumerLifecycle:
         assert consumer.active_ai_cameras == {camera.id}
         assert consumer.get_frame_queue(camera.id) is not None
         await consumer.stop_all_async()
+
+    @pytest.mark.asyncio
+    async def test_mjpeg_preview_without_pipeline_does_not_decode_frames(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        manager = CameraManager()
+        camera = Camera(
+            name="MJPEG",
+            source_streams=[Stream(url="http://example.test/mjpeg", stream_type=StreamType.MJPEG)],
+        )
+        await manager.add_camera(camera)
+        consumer = make_consumer(manager)
+        consumer._target_interval = 0
+        frame_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
+        consumer._frame_queues[camera.id] = frame_queue
+
+        async def pull_one_frame(url: str) -> AsyncIterator[bytes]:
+            yield b"jpeg"
+
+        def fail_decode(data: bytes) -> object:
+            msg = "preview-only consumers should not decode frames"
+            raise AssertionError(msg)
+
+        monkeypatch.setattr(mjpeg, "pull_mjpeg_frames", pull_one_frame)
+        monkeypatch.setattr(mjpeg, "decode_jpeg_frame", fail_decode)
+
+        await consumer._consume_mjpeg(camera, "http://example.test/mjpeg", None)
+
+        assert await frame_queue.get() == b"jpeg"

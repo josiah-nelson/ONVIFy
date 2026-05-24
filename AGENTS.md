@@ -138,12 +138,13 @@ pytest --cov=onvify --cov-report=term-missing
 
 PRs go through a multi-stage review pipeline before merge:
 
-1. Open PR with structured summary table + test plan checkboxes
-2. Wait for CI to pass
-3. Wait for **Greptile** automated review (~5 min)
-4. Fix all feedback or add inline code documentation to clarify/justify unfixed items
-5. Push fixes to the same branch — never open a new PR for feedback
-6. Post a summary comment listing fixes and justifications. If score < 4/5, tag `@greptileai review`
-7. Repeat 3-6 until Greptile score >= 4/5 with no P0/P1 issues
-8. Request **Copilot** review: `gh pr edit --add-reviewer @copilot`
-9. Address Copilot feedback (one round only) and flag for human review
+1. Validate locally: `ruff check .`, `mypy .`, `pytest` must all pass
+2. Open PR with structured summary table + test plan checkboxes
+3. Wait for CI to pass
+4. Wait for **Greptile** automated review (~5 min)
+5. Fix all feedback or add inline code documentation to clarify/justify unfixed items
+6. Push fixes to the same branch — never open a new PR for feedback
+7. Post a summary comment listing fixes and justifications. If score < 4/5 or P0/P1 issues remain, tag `@greptileai review`
+8. Repeat 4-7 until Greptile score >= 4/5 with no P0/P1 issues
+9. Request **Copilot** review: `gh pr edit --add-reviewer @copilot`
+10. Address Copilot feedback (one round only) and flag for human review

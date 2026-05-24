@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
 
 from onvify.inference.protocol import BackendHealth, BackendStatus
@@ -169,7 +169,7 @@ class TestDetectionEndpoints:
         )
         response = client.get("/api/detection/health")
 
-        assert response.status_code == 503
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert response.json()["health"] == "unavailable"
         assert response.json()["message"] == "backend offline"
 

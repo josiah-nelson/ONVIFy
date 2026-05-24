@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
+from fastapi import status as http_status
 
 from onvify.api.dependencies import get_database, get_inference_backend, get_settings
 from onvify.config import Settings
@@ -46,7 +47,7 @@ async def list_detection_events(
 
 @router.get("/health")
 async def get_detection_health(backend: InferenceBackendDep, response: Response) -> BackendStatus:
-    status = await backend.health_check()
-    if status.health != BackendHealth.HEALTHY:
-        response.status_code = 503
-    return status
+    backend_status = await backend.health_check()
+    if backend_status.health != BackendHealth.HEALTHY:
+        response.status_code = http_status.HTTP_503_SERVICE_UNAVAILABLE
+    return backend_status

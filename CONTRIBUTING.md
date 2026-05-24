@@ -72,13 +72,17 @@ pip install -e ".[dev]"
    - `ruff check .` — must pass with 0 errors
    - `mypy .` — must pass in strict mode
    - `pytest` — all tests must pass
-
-2. Open the PR with a structured body: summary table of changes, test plan with checkboxes
-3. Wait for CI
-4. Wait for automated reviews — Greptile and Copilot typically post within ~5 minutes
-5. Address all issues immediately; either fix or clearly justify if not fixing
-6. Push fixes to the same branch — never open a new PR for review feedback
-7. Target Greptile score >= 4/5 before considering the PR ready for human reviewPR Workflow
+2. **Open a PR** with a structured body:
+   - Summary table mapping issues to files changed
+   - Test plan with checkboxes showing what was validated
+3. **Wait for CI** — all jobs must pass
+4. **Wait for Greptile review** — Greptile typically posts within ~5 minutes
+5. **Address all feedback** — either fix the code or add inline documentation to clarify/justify unfixed feedback
+6. **Push fixes to the same branch** — never open a separate PR for review feedback
+7. **Post a summary comment** on the PR listing what was fixed and explaining any intentionally unfixed feedback. If Greptile score is < 4/5, tag for re-review with `@greptileai review` in the comment body
+8. **Repeat steps 4-7** until Greptile score is >= 4/5 and no P0/P1 issues remain (Greptile revises its score on re-review as an update to the original comment)
+9. **Request Copilot review** once Greptile criteria are met: `gh pr edit --add-reviewer @copilot`
+10. **Address Copilot feedback** and flag PR for final human review. Only one round of Copilot review is required — do not tag Copilot for re-review
 
 ### Definition of Done
 
@@ -87,7 +91,9 @@ A contribution is not done until all of the following are true:
 - Local validation has been run (`ruff`, `mypy`, `pytest`)
 - A PR has been opened with a structured summary and test plan
 - CI has completed and all checks pass
-- Review feedback has been addressed
+- Greptile score is >= 4/5 with no P0/P1 issues
+- Copilot review has been completed and feedback addressed
+- PR is flagged for final human review
 
 ## Build and Test Commands
 

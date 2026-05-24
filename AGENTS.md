@@ -131,5 +131,19 @@ pytest --cov=onvify --cov-report=term-missing
 - Use `gh` CLI for GitHub operations
 - Do not push directly to `main`
 - Open a pull request for all non-trivial work
+- Keep PRs to ~500 LOC of diff
 - Label issues by domain (see `CONTRIBUTING.md`)
-- PRs require: local lint/typecheck/test pass, structured summary, test plan, CI green
+
+### PR Review Sequence
+
+PRs go through a multi-stage review pipeline before merge:
+
+1. Open PR with structured summary table + test plan checkboxes
+2. Wait for CI to pass
+3. Wait for **Greptile** automated review (~5 min)
+4. Fix all feedback or add inline code documentation to clarify/justify unfixed items
+5. Push fixes to the same branch — never open a new PR for feedback
+6. Post a summary comment listing fixes and justifications. If score < 4/5, tag `@greptileai review`
+7. Repeat 3-6 until Greptile score >= 4/5 with no P0/P1 issues
+8. Request **Copilot** review: `gh pr edit --add-reviewer @copilot`
+9. Address Copilot feedback (one round only) and flag for human review

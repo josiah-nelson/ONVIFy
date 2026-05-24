@@ -27,11 +27,15 @@ def create_inference_backend(settings: InferenceSettings) -> InferenceBackend:
         logger.info("inference_backend_created", backend="openai_compatible", url=settings.backend_url)
         return backend
 
-    from onvify.inference.local_yolo import LocalYOLOBackend
+    if settings.backend == "local":
+        from onvify.inference.local_yolo import LocalYOLOBackend
 
-    backend = LocalYOLOBackend(
-        model_name=settings.default_model,
-        torch_threads=settings.torch_threads,
-    )
-    logger.info("inference_backend_created", backend="local_yolo", model=settings.default_model)
-    return backend
+        backend = LocalYOLOBackend(
+            model_name=settings.default_model,
+            torch_threads=settings.torch_threads,
+        )
+        logger.info("inference_backend_created", backend="local_yolo", model=settings.default_model)
+        return backend
+
+    msg = f"Unsupported inference backend: {settings.backend!r}. Use 'local' or 'openai_compatible'."
+    raise ValueError(msg)

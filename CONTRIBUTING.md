@@ -72,12 +72,13 @@ pip install -e ".[dev]"
    - `ruff check .` — must pass with 0 errors
    - `mypy .` — must pass in strict mode
    - `pytest` — all tests must pass
-2. **Open a PR** with a structured body:
-   - Summary mapping issues to files changed
-   - Test plan with checkboxes showing what was validated
-3. **Wait for CI** — all jobs must pass
-4. **Address review feedback** on the same branch — never open a separate PR for feedback
-5. **Push fixes** to the same branch after feedback
+
+2. Open the PR with a structured body: summary table of changes, test plan with checkboxes
+3. Wait for CI
+4. Wait for automated reviews — Greptile and Copilot typically post within ~5 minutes
+5. Address all issues immediately; either fix or clearly justify if not fixing
+6. Push fixes to the same branch — never open a new PR for review feedback
+7. Target Greptile score >= 4/5 before considering the PR ready for human reviewPR Workflow
 
 ### Definition of Done
 

@@ -15,6 +15,8 @@ concurrency:
 jobs:
   # ──────────────────────────────────────────────
   # Build + Lint + Unit Tests (GitHub-hosted)
+  # Runs for all events including fork PRs — safe,
+  # no secrets or self-hosted runners exposed.
   # ──────────────────────────────────────────────
   build:
     name: Build & Unit Tests
@@ -48,12 +50,18 @@ jobs:
 
   # ──────────────────────────────────────────────
   # Windows E2E (self-hosted)
+  # Only runs for pushes, manual dispatch, or PRs
+  # from this repo (never fork PRs).
   # ──────────────────────────────────────────────
   e2e-windows:
     name: Windows E2E (Self-Hosted)
     needs: build
     runs-on: [self-hosted, Windows, X64]
-    if: false  # Enable when self-hosted runner is configured
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
 
     concurrency:
       group: e2e-windows
@@ -86,7 +94,11 @@ jobs:
     name: Linux E2E (Self-Hosted)
     needs: build
     runs-on: [self-hosted, Linux, X64]
-    if: false  # Enable when self-hosted runner is configured
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
 
     concurrency:
       group: e2e-linux
@@ -118,7 +130,11 @@ jobs:
     name: macOS E2E (Self-Hosted)
     needs: build
     runs-on: [self-hosted, macOS, ARM64]
-    if: false  # Enable when self-hosted runner is configured
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
 
     concurrency:
       group: e2e-macos
@@ -144,22 +160,71 @@ jobs:
           pytest -m integration --tb=short
 
   # ──────────────────────────────────────────────
-  # Release (tag or manual trigger)
+  # Release + Azure Code Signing (tag-triggered)
+  # Runs on self-hosted Windows runner with access
+  # to Azure OIDC. Protected by `environment: release`
+  # which scopes secrets to tag refs only.
   # ──────────────────────────────────────────────
   release:
-    name: Create Release
-    needs: build
-    runs-on: ubuntu-latest
+    name: Release & Sign
+    needs: [build, e2e-windows, e2e-linux, e2e-macos]
+    runs-on: [self-hosted, Windows, X64]
     if: startsWith(github.ref, 'refs/tags/v')
+    environment: release
     permissions:
+      id-token: write
       contents: write
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,inference]"
+
+      - name: Build MSI installer
+        shell: pwsh
+        run: |
+          # PyInstaller bundle + WiX build
+          Write-Host "Building ONVIFy v${{ steps.version.outputs.version }}"
+          # TODO: pyinstaller + wix build steps
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign release artifacts
+        uses: azure/artifact-signing-action@v1.2.0
+        with:
+          azure-endpoint: https://eus.codesigning.azure.net/
+          azure-code-signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
+          azure-certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}/dist
+          files-folder-filter: exe,msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: ONVIFy ${{ steps.version.outputs.version }}
           generate_release_notes: true
+          files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

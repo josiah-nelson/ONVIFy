@@ -66,6 +66,8 @@ pip install -e ".[dev]"
 
 ### Pull Requests
 
+**Keep PRs to ~500 LOC of diff.** Larger changes should be split into stacked PRs or sequential commits that each stand alone. Exceptions: scaffolding commits, generated code, and large test fixture additions don't count toward the limit.
+
 1. **Validate locally** before opening:
    - `ruff check .` — must pass with 0 errors
    - `mypy .` — must pass in strict mode

@@ -24,37 +24,34 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
-    # Database
     db = Database(settings.root_dir / "data" / "onvify.db")
     await db.connect()
     app.state.database = db
 
-    # Camera manager — loads persisted cameras from DB
-    manager = CameraManager(database=db)
-    await manager.load_from_database()
-    app.state.camera_manager = manager
+    try:
+        manager = CameraManager(database=db)
+        await manager.load_from_database()
+        app.state.camera_manager = manager
 
-    # MediaMTX
-    mediamtx = MediaMTXManager(settings)
-    mediamtx.write_config(manager.list_cameras())
-    app.state.mediamtx = mediamtx
+        mediamtx = MediaMTXManager(settings)
+        mediamtx.write_config(manager.list_cameras())
+        app.state.mediamtx = mediamtx
 
-    # WebSocket connection manager
-    app.state.ws_manager = ConnectionManager()
+        app.state.ws_manager = ConnectionManager()
 
-    logger.info(
-        "onvify_started",
-        version=__version__,
-        cameras=len(manager.list_cameras()),
-        inference_backend=settings.inference.backend,
-    )
+        logger.info(
+            "onvify_started",
+            version=__version__,
+            cameras=len(manager.list_cameras()),
+            inference_backend=settings.inference.backend,
+        )
 
-    yield
-
-    # Shutdown
-    mediamtx.stop()
-    await db.disconnect()
-    logger.info("onvify_stopped")
+        yield
+    finally:
+        if hasattr(app.state, "mediamtx"):
+            app.state.mediamtx.stop()
+        await db.disconnect()
+        logger.info("onvify_stopped")
 
 
 def create_app() -> FastAPI:
@@ -69,7 +66,6 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )

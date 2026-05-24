@@ -77,8 +77,8 @@ class Database:
     # ── Camera persistence ──────────────────────────
 
     async def list_cameras(self) -> list[Camera]:
-        cursor = await self.connection.execute("SELECT config_json FROM cameras ORDER BY name")
-        rows = await cursor.fetchall()
+        async with self.connection.execute("SELECT config_json FROM cameras ORDER BY name") as cursor:
+            rows = await cursor.fetchall()
         return [Camera.model_validate_json(row[0]) for row in rows]
 
     async def save_camera(self, camera: Camera) -> None:
@@ -131,20 +131,21 @@ class Database:
         limit: int = 100,
     ) -> list[DetectionEvent]:
         if camera_id:
-            cursor = await self.connection.execute(
+            async with self.connection.execute(
                 "SELECT id, camera_id, timestamp, detections_json, inference_time_ms, backend, "
                 "frame_width, frame_height "
                 "FROM detection_events WHERE camera_id = ? ORDER BY timestamp DESC LIMIT ?",
                 (str(camera_id), limit),
-            )
+            ) as cursor:
+                rows = await cursor.fetchall()
         else:
-            cursor = await self.connection.execute(
+            async with self.connection.execute(
                 "SELECT id, camera_id, timestamp, detections_json, inference_time_ms, backend, "
                 "frame_width, frame_height "
                 "FROM detection_events ORDER BY timestamp DESC LIMIT ?",
                 (limit,),
-            )
-        rows = await cursor.fetchall()
+            ) as cursor:
+                rows = await cursor.fetchall()
         events: list[DetectionEvent] = []
         for row in rows:
             detections = [Detection.model_validate(d) for d in json.loads(row[3])]

@@ -138,9 +138,16 @@ class StreamConsumer:
             except asyncio.CancelledError:
                 self._manager.set_status(camera.id, CameraStatus.OFFLINE)
                 return
-            except Exception:
+            except Exception as exc:
                 self._manager.set_status(camera.id, CameraStatus.ERROR)
-                logger.exception("stream_consumer_error", camera_id=str(camera.id), backoff=backoff)
+                safe = _safe_url(primary.url) if primary else "unknown"
+                logger.error(
+                    "stream_consumer_error",
+                    camera_id=str(camera.id),
+                    backoff=backoff,
+                    error=str(exc),
+                    url=safe,
+                )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, self._reconnect_max)
                 pipeline.reset()

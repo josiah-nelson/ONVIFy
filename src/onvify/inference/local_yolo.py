@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from onvify.inference.protocol import BackendHealth, BackendStatus, InferenceBackend
+from onvify.inference.protocol import BackendHealth, BackendStatus
 from onvify.models.detection import BoundingBox, Detection, ObjectClass
 
 if TYPE_CHECKING:

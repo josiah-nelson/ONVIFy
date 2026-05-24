@@ -111,7 +111,10 @@ async def update_camera(
     try:
         updated = await manager.update_camera(camera_id, **updates)
     except KeyError as err:
-        await _reload_mediamtx(mediamtx, manager.list_cameras())
+        try:
+            await _reload_mediamtx(mediamtx, manager.list_cameras())
+        except HTTPException:
+            logger.error("mediamtx_update_missing_camera_rollback_failed", camera_id=str(camera_id))
         raise HTTPException(status_code=404, detail="Camera not found") from err
     except Exception:
         await _reload_mediamtx(mediamtx, manager.list_cameras())

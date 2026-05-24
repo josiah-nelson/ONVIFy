@@ -40,11 +40,14 @@ class FailingInferenceBackend:
 class RecordingMediaMTXManager:
     def __init__(self) -> None:
         self.reload_camera_counts: list[int] = []
+        self.reload_attempts = 0
+        self.fail_on_reload_attempts: set[int] = set()
         self.fail_next_reload = False
         self.stopped = False
 
     def reload_config(self, cameras: list[Camera]) -> None:
-        if self.fail_next_reload:
+        self.reload_attempts += 1
+        if self.fail_next_reload or self.reload_attempts in self.fail_on_reload_attempts:
             self.fail_next_reload = False
             msg = "failed to write MediaMTX config"
             raise OSError(msg)
@@ -272,6 +275,39 @@ class TestCameraEndpoints:
 
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
         assert mediamtx.reload_camera_counts == [1, 1]
+        assert consumer.started == []
+        assert consumer.stopped == []
+
+    @pytest.mark.asyncio
+    async def test_update_camera_key_error_preserves_404_when_rollback_fails(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        manager = CameraManager()
+        camera = Camera(name="AI", source_streams=[Stream(url="rtsp://x")], ai_enabled=True)
+        await manager.add_camera(camera)
+        mediamtx = RecordingMediaMTXManager()
+        mediamtx.fail_on_reload_attempts = {2}
+        consumer = RecordingStreamConsumer()
+
+        async def fail_update(camera_id: UUID, **kwargs: object) -> Camera:
+            msg = f"Camera {camera_id} not found"
+            raise KeyError(msg)
+
+        monkeypatch.setattr(manager, "update_camera", fail_update)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_camera(
+                camera.id,
+                UpdateCameraRequest(name="AI Updated"),
+                manager,
+                cast(MediaMTXManager, mediamtx),
+                cast(StreamConsumer, consumer),
+            )
+
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+        assert mediamtx.reload_attempts == 2
+        assert mediamtx.reload_camera_counts == [1]
         assert consumer.started == []
         assert consumer.stopped == []
 

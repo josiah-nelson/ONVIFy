@@ -10,7 +10,8 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from onvify.api.dependencies import get_camera_manager, get_mediamtx_manager, get_stream_consumer
+from onvify.api.dependencies import get_camera_manager, get_mediamtx_manager, get_stream_consumer, get_ws_manager
+from onvify.api.websocket import ConnectionManager
 from onvify.models.camera import Camera, Stream, StreamType
 from onvify.services.camera_manager import CameraManager
 from onvify.services.stream_consumer import StreamConsumer
@@ -21,6 +22,7 @@ router = APIRouter()
 ManagerDep = Annotated[CameraManager, Depends(get_camera_manager)]
 MediaMTXDep = Annotated[MediaMTXManager, Depends(get_mediamtx_manager)]
 ConsumerDep = Annotated[StreamConsumer, Depends(get_stream_consumer)]
+WSManagerDep = Annotated[ConnectionManager, Depends(get_ws_manager)]
 
 logger = structlog.get_logger()
 
@@ -81,6 +83,7 @@ async def create_camera(
     manager: ManagerDep,
     mediamtx: MediaMTXDep,
     consumer: ConsumerDep,
+    ws: WSManagerDep,
 ) -> Camera:
     stream = Stream(url=body.source_url, stream_type=body.stream_type)
     camera = Camera(
@@ -98,6 +101,7 @@ async def create_camera(
         await _rollback_mediamtx(mediamtx, manager.list_cameras(), "create", camera.id)
         raise
     consumer.start_camera(created)
+    await ws.broadcast_event("camera.created", {"camera": created.model_dump(mode="json")})
     return created
 
 
@@ -116,6 +120,7 @@ async def update_camera(
     manager: ManagerDep,
     mediamtx: MediaMTXDep,
     consumer: ConsumerDep,
+    ws: WSManagerDep,
 ) -> Camera:
     updates = body.model_dump(exclude_unset=True)
     if not updates:
@@ -135,11 +140,18 @@ async def update_camera(
         raise
     consumer.stop_camera(camera_id)
     consumer.start_camera(updated)
+    await ws.broadcast_event("camera.updated", {"camera": updated.model_dump(mode="json")})
     return updated
 
 
 @router.delete("/{camera_id}", status_code=204)
-async def delete_camera(camera_id: UUID, manager: ManagerDep, mediamtx: MediaMTXDep, consumer: ConsumerDep) -> None:
+async def delete_camera(
+    camera_id: UUID,
+    manager: ManagerDep,
+    mediamtx: MediaMTXDep,
+    consumer: ConsumerDep,
+    ws: WSManagerDep,
+) -> None:
     current = manager.get_camera(camera_id)
     if current is None:
         raise HTTPException(status_code=404, detail="Camera not found")
@@ -153,3 +165,4 @@ async def delete_camera(camera_id: UUID, manager: ManagerDep, mediamtx: MediaMTX
         await _rollback_mediamtx(mediamtx, manager.list_cameras(), "delete", camera_id)
         raise
     consumer.stop_camera(camera_id)
+    await ws.broadcast_event("camera.deleted", {"camera_id": str(camera_id)})

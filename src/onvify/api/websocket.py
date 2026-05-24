@@ -39,3 +39,6 @@ class ConnectionManager:
                     stale.append(conn)
             for conn in stale:
                 self._connections.remove(conn)
+
+    async def broadcast_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        await self.broadcast({"type": event_type, **payload})

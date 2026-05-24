@@ -12,7 +12,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 - [x] **MJPEG output endpoint** — Add a FastAPI streaming route (e.g., `GET /api/cameras/{id}/mjpeg`) that serves live MJPEG for browser preview.
 - [x] **Inference pipeline wiring** — Connect the inference pipeline to the frame grabbers so detection runs automatically on cameras with `ai_enabled=True`. Manage pipeline lifecycle (start/stop/reset) alongside camera state changes.
 - [x] **Detection event persistence** — Store detection events in SQLite and expose via API (`GET /api/detection/events`).
-- [ ] **WebSocket event broadcasting** — Wire the `ConnectionManager` to broadcast detection events and camera status changes as they occur.
+- [x] **WebSocket event broadcasting** — Wire the `ConnectionManager` to broadcast detection events and camera status changes as they occur.
 
 ## ONVIF Protocol
 

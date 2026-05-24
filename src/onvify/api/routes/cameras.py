@@ -132,6 +132,6 @@ async def delete_camera(camera_id: UUID, manager: ManagerDep, mediamtx: MediaMTX
     except KeyError as err:
         raise HTTPException(status_code=404, detail="Camera not found") from err
     except Exception:
-        await _reload_mediamtx(mediamtx, [*manager.list_cameras(), current])
+        await _reload_mediamtx(mediamtx, manager.list_cameras())
         raise
     consumer.stop_camera(camera_id)

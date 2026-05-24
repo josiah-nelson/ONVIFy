@@ -15,8 +15,12 @@ import pytest
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
 
+from onvify.api.routes.cameras import delete_camera
 from onvify.inference.protocol import BackendHealth, BackendStatus
-from onvify.models.camera import Camera, StreamType
+from onvify.models.camera import Camera, Stream, StreamType
+from onvify.services.camera_manager import CameraManager
+from onvify.services.stream_consumer import StreamConsumer
+from onvify.services.streaming import MediaMTXManager
 
 
 class FakeInferenceBackend:
@@ -271,6 +275,35 @@ class TestCameraEndpoints:
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert client.get(f"/api/cameras/{camera_id}").status_code == 200
+        assert consumer.stopped == []
+
+    @pytest.mark.asyncio
+    async def test_delete_camera_persistence_failure_rolls_back_without_duplicate_config(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        manager = CameraManager()
+        camera = Camera(name="AI", source_streams=[Stream(url="rtsp://x")], ai_enabled=True)
+        await manager.add_camera(camera)
+        mediamtx = RecordingMediaMTXManager()
+        consumer = RecordingStreamConsumer()
+
+        async def fail_remove(camera_id: UUID) -> Camera:
+            msg = "db delete failed"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(manager, "remove_camera", fail_remove)
+
+        with pytest.raises(RuntimeError, match="db delete failed"):
+            await delete_camera(
+                camera.id,
+                manager,
+                cast(MediaMTXManager, mediamtx),
+                cast(StreamConsumer, consumer),
+            )
+
+        assert mediamtx.reload_camera_counts == [0, 1]
+        assert manager.get_camera(camera.id) is not None
         assert consumer.stopped == []
 
     def test_get_missing_camera(self, client: TestClient) -> None:

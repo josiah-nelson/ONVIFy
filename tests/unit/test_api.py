@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
@@ -572,6 +573,81 @@ class TestDetectionEndpoints:
         assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
         assert response.json()["health"] == "unavailable"
         assert response.json()["message"] == "backend exploded"
+
+
+class TestStreamStatusEndpoint:
+    @staticmethod
+    def _mock_response(status_code: int, json: dict[str, object]) -> httpx.Response:
+        """Build an httpx.Response with a dummy request so raise_for_status() works."""
+        return httpx.Response(
+            status_code,
+            json=json,
+            request=httpx.Request("GET", "http://localhost:9997/v3/paths/list"),
+        )
+
+    def test_stream_status_returns_mediamtx_paths(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        mock_response = self._mock_response(
+            200,
+            {
+                "items": [
+                    {
+                        "name": "front_door",
+                        "ready": True,
+                        "readyTime": "2024-01-01T00:00:00Z",
+                        "readers": 2,
+                        "bytesReceived": 1024000,
+                        "bytesSent": 512000,
+                    },
+                    {
+                        "name": "backyard",
+                        "ready": False,
+                        "readyTime": None,
+                        "readers": 0,
+                        "bytesReceived": 0,
+                        "bytesSent": 0,
+                    },
+                ]
+            },
+        )
+
+        async def mock_get(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
+            return mock_response
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+        response = client.get("/api/streams/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert data[0]["name"] == "front_door"
+        assert data[0]["ready"] is True
+        assert data[0]["readers"] == 2
+        assert data[0]["bytes_received"] == 1024000
+        assert data[0]["bytes_sent"] == 512000
+        assert data[1]["name"] == "backyard"
+        assert data[1]["ready"] is False
+
+    def test_stream_status_mediamtx_unreachable(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        async def mock_get(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
+            raise httpx.ConnectError("Connection refused")
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+        response = client.get("/api/streams/status")
+        assert response.status_code == 502
+        assert response.json()["detail"] == "MediaMTX API is unreachable"
+
+    def test_stream_status_empty_items(self, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+        mock_response = self._mock_response(200, {"items": []})
+
+        async def mock_get(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
+            return mock_response
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+        response = client.get("/api/streams/status")
+        assert response.status_code == 200
+        assert response.json() == []
 
 
 class TestWebSocket:

@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
+import httpx
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from onvify.api.dependencies import get_camera_manager, get_stream_consumer
+from onvify.api.dependencies import get_camera_manager, get_settings, get_stream_consumer
+from onvify.config import Settings
 from onvify.services.camera_manager import CameraManager
 from onvify.services.mjpeg import mjpeg_response_stream
 from onvify.services.stream_consumer import StreamConsumer
+
+logger = structlog.get_logger()
 
 router = APIRouter()
 
@@ -28,6 +33,7 @@ def _redact_url(url: str) -> str:
 
 ManagerDep = Annotated[CameraManager, Depends(get_camera_manager)]
 ConsumerDep = Annotated[StreamConsumer, Depends(get_stream_consumer)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @router.get("/")
@@ -49,6 +55,39 @@ async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[
             }
         )
     return streams
+
+
+@router.get("/status")
+async def stream_status(settings: SettingsDep) -> list[dict[str, Any]]:
+    """Query MediaMTX API for active stream paths with status, bitrate, and reader count."""
+    api_url = f"http://localhost:{settings.server.mediamtx_api_port}/v3/paths/list"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(api_url)
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("mediamtx_api_unreachable", url=api_url, error=str(exc))
+        raise HTTPException(
+            status_code=502,
+            detail="MediaMTX API is unreachable",
+        ) from exc
+
+    data = response.json()
+    items: list[dict[str, Any]] = data.get("items") or []
+
+    result: list[dict[str, Any]] = []
+    for path in items:
+        result.append(
+            {
+                "name": path.get("name"),
+                "ready": path.get("ready", False),
+                "ready_time": path.get("readyTime"),
+                "readers": path.get("readers", 0),
+                "bytes_received": path.get("bytesReceived", 0),
+                "bytes_sent": path.get("bytesSent", 0),
+            }
+        )
+    return result
 
 
 @router.get("/{camera_id}/mjpeg")

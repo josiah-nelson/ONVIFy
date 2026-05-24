@@ -87,7 +87,7 @@ def resolve_mediamtx_binary(settings: Settings) -> Path | None:
     version = settings.streaming.mediamtx_version
     configured = settings.streaming.mediamtx_bin
     if configured is not None:
-        binary = _resolve_configured_binary(configured)
+        binary = _resolve_configured_binary(configured, settings.root_dir)
         _ensure_binary_version(binary, version)
         return binary
 
@@ -131,12 +131,12 @@ def _normalize_arch(machine_name: str) -> Literal["amd64", "arm64", "armv6", "ar
     raise RuntimeError(msg)
 
 
-def _resolve_configured_binary(configured: Path) -> Path:
+def _resolve_configured_binary(configured: Path, root_dir: Path) -> Path:
     if configured.is_absolute():
         candidate = configured
     else:
         found = shutil.which(str(configured))
-        candidate = Path(found) if found else configured
+        candidate = Path(found) if found else (root_dir / configured).resolve()
     candidate = candidate.expanduser()
     if not candidate.exists():
         msg = f"Configured MediaMTX binary does not exist: {candidate}"

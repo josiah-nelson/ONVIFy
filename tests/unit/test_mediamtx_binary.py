@@ -92,6 +92,17 @@ class TestMediaMTXBinaryResolution:
 
         assert resolve_mediamtx_binary(settings) == binary
 
+    def test_configured_binary_rejects_adjacent_patch_version(self, tmp_path: Path) -> None:
+        binary = tmp_path / "mediamtx"
+        _write_fake_mediamtx(binary, "v1.18.20")
+        settings = Settings(
+            root_dir=tmp_path,
+            streaming=StreamingSettings(mediamtx_auto_download=False, mediamtx_bin=binary),
+        )
+
+        with pytest.raises(RuntimeError, match="expected version"):
+            resolve_mediamtx_binary(settings)
+
     def test_download_extracts_and_checks_binary(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         archive_path = _make_tar_archive(tmp_path, "v1.18.2")
         settings = Settings(root_dir=tmp_path, streaming=StreamingSettings(mediamtx_auto_download=True))

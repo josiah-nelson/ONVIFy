@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -24,6 +25,7 @@ logger = structlog.get_logger()
 
 RELEASE_BASE_URL = "https://github.com/bluenviron/mediamtx/releases/download"
 DOWNLOAD_TIMEOUT_SECONDS = 30.0
+_VERSION_TOKEN_PATTERN = re.compile(r"v?\d+\.\d+\.\d+")
 
 
 @dataclass(frozen=True)
@@ -163,9 +165,14 @@ def _ensure_binary_version(binary: Path, version: str) -> None:
         check=False,
     )
     output = f"{result.stdout}\n{result.stderr}"
-    if result.returncode != 0 or (version not in output and version.removeprefix("v") not in output):
+    if result.returncode != 0 or not _version_output_matches(output, version):
         msg = f"MediaMTX binary {binary} does not report expected version {version}"
         raise RuntimeError(msg)
+
+
+def _version_output_matches(output: str, version: str) -> bool:
+    expected = {version, version.removeprefix("v")}
+    return any(match.group(0) in expected for match in _VERSION_TOKEN_PATTERN.finditer(output))
 
 
 def _download_file(url: str, destination: Path) -> None:
@@ -175,10 +182,18 @@ def _download_file(url: str, destination: Path) -> None:
 
 def _verify_checksum(archive_path: Path, checksums_path: Path) -> None:
     expected = _read_expected_checksum(checksums_path, archive_path.name)
-    actual = sha256(archive_path.read_bytes()).hexdigest()
+    actual = _sha256_file(archive_path)
     if actual != expected:
         msg = f"Checksum mismatch for {archive_path.name}"
         raise RuntimeError(msg)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _read_expected_checksum(checksums_path: Path, archive_name: str) -> str:

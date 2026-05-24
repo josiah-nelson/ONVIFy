@@ -14,7 +14,6 @@ from onvify.api.dependencies import get_settings
 from onvify.api.routes import cameras, detection, streams, system
 from onvify.api.websocket import ConnectionManager
 from onvify.inference.factory import create_inference_backend
-from onvify.inference.pipeline import InferencePipeline
 from onvify.infrastructure.database import Database
 from onvify.services.camera_manager import CameraManager
 from onvify.services.stream_consumer import StreamConsumer
@@ -28,10 +27,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
     db = Database(settings.root_dir / "data" / "onvify.db")
-    await db.connect()
-    app.state.database = db
 
     try:
+        await db.connect()
+        app.state.database = db
+
         manager = CameraManager(database=db)
         await manager.load_from_database()
         app.state.camera_manager = manager
@@ -44,17 +44,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.ws_manager = ws_manager
 
         backend = create_inference_backend(settings.inference)
-        pipeline = InferencePipeline(
+        consumer = StreamConsumer(
+            camera_manager=manager,
             backend=backend,
+            database=db,
+            ws_manager=ws_manager,
             motion_sensitivity=settings.inference.motion_sensitivity,
             confidence_threshold=settings.inference.confidence_threshold / 100.0,
             cooldown_seconds=settings.inference.cooldown_seconds,
-        )
-        consumer = StreamConsumer(
-            camera_manager=manager,
-            pipeline=pipeline,
-            database=db,
-            ws_manager=ws_manager,
             reconnect_base=settings.streaming.grabber_reconnect_base,
             reconnect_max=settings.streaming.grabber_reconnect_max,
             target_interval=settings.inference.target_interval,
@@ -73,7 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         if hasattr(app.state, "stream_consumer"):
-            app.state.stream_consumer.stop_all()
+            await app.state.stream_consumer.stop_all_async()
         if hasattr(app.state, "mediamtx"):
             app.state.mediamtx.stop()
         await db.disconnect()

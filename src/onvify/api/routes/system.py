@@ -43,4 +43,6 @@ async def websocket_events(websocket: WebSocket, ws_manager: WSManagerDep) -> No
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
+        pass
+    finally:
         await ws_manager.disconnect(websocket)

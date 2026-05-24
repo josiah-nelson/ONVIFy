@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +15,16 @@ from onvify.services.mjpeg import mjpeg_response_stream
 from onvify.services.stream_consumer import StreamConsumer
 
 router = APIRouter()
+
+
+def _redact_url(url: str) -> str:
+    """Strip userinfo (credentials) from a URL before returning it to API consumers."""
+    parsed = urlparse(url)
+    if parsed.username:
+        redacted = parsed._replace(netloc=f"***@{parsed.hostname}" + (f":{parsed.port}" if parsed.port else ""))
+        return urlunparse(redacted)
+    return url
+
 
 ManagerDep = Annotated[CameraManager, Depends(get_camera_manager)]
 ConsumerDep = Annotated[StreamConsumer, Depends(get_stream_consumer)]
@@ -30,7 +41,7 @@ async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[
                 "camera_name": cam.name,
                 "status": cam.status.value,
                 "stream_type": primary.stream_type.value if primary else None,
-                "source_url": primary.url if primary else None,
+                "source_url": _redact_url(primary.url) if primary else None,
                 "ai_active": cam.id in consumer.active_cameras,
             }
         )

@@ -69,3 +69,20 @@ class TestStreamConsumerLifecycle:
         assert consumer.active_cameras == {camera.id}
         assert consumer.active_ai_cameras == set()
         await consumer.stop_all_async()
+
+    @pytest.mark.asyncio
+    async def test_stop_then_start_keeps_new_task_tracked_after_old_task_finishes(self) -> None:
+        manager = CameraManager()
+        camera = Camera(name="AI", source_streams=[Stream(url="rtsp://x")], ai_enabled=True)
+        await manager.add_camera(camera)
+        consumer = make_consumer(manager)
+
+        consumer.start_camera(camera)
+        consumer.stop_camera(camera.id)
+        consumer.start_camera(camera)
+        await asyncio.sleep(0)
+
+        assert consumer.active_cameras == {camera.id}
+        assert consumer.active_ai_cameras == {camera.id}
+        assert consumer.get_frame_queue(camera.id) is not None
+        await consumer.stop_all_async()

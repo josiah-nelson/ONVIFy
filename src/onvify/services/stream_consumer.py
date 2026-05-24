@@ -1,8 +1,7 @@
 """Per-camera stream consumption and inference orchestration.
 
-Manages an async task per AI-enabled camera that pulls frames, runs
-the inference pipeline, broadcasts detection events via WebSocket,
-and persists them to the database.
+Manages async tasks for cameras that need local frame consumption,
+including AI-enabled cameras and MJPEG preview sources.
 """
 
 from __future__ import annotations
@@ -92,11 +91,17 @@ class StreamConsumer:
             name=f"stream-{camera.id}",
         )
         camera_id = camera.id
-        task.add_done_callback(lambda _t: self._on_task_done(camera_id))
         self._tasks[camera.id] = task
+
+        def cleanup(_done: asyncio.Future[None]) -> None:
+            self._on_task_done(camera_id, task)
+
+        task.add_done_callback(cleanup)
         logger.info("stream_consumer_started", camera_id=str(camera.id), name=camera.name)
 
-    def _on_task_done(self, camera_id: UUID) -> None:
+    def _on_task_done(self, camera_id: UUID, task: asyncio.Task[None]) -> None:
+        if self._tasks.get(camera_id) is not task:
+            return
         self._tasks.pop(camera_id, None)
         self._frame_queues.pop(camera_id, None)
 

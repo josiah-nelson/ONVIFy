@@ -36,9 +36,14 @@ class FailingInferenceBackend:
 class RecordingMediaMTXManager:
     def __init__(self) -> None:
         self.reload_camera_counts: list[int] = []
+        self.fail_next_reload = False
         self.stopped = False
 
     def reload_config(self, cameras: list[Camera]) -> None:
+        if self.fail_next_reload:
+            self.fail_next_reload = False
+            msg = "failed to write MediaMTX config"
+            raise OSError(msg)
         self.reload_camera_counts.append(len(cameras))
 
     def stop(self) -> None:
@@ -156,6 +161,20 @@ class TestCameraEndpoints:
         assert mediamtx.reload_camera_counts == [1]
         assert consumer.started == []
 
+    def test_create_camera_reload_failure_does_not_persist_or_start_consumer(self, client: TestClient) -> None:
+        mediamtx, consumer = install_recording_lifecycle_services(client)
+        mediamtx.fail_next_reload = True
+
+        response = client.post(
+            "/api/cameras/",
+            json={"name": "Broken", "source_url": "rtsp://192.168.1.100:554/stream1", "ai_enabled": True},
+        )
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert response.json()["detail"] == "MediaMTX config reload failed"
+        assert client.get("/api/cameras/").json() == []
+        assert consumer.started == []
+
     def test_create_ai_camera_starts_consumer(self, client: TestClient) -> None:
         mediamtx, consumer = install_recording_lifecycle_services(client)
         response = client.post(
@@ -202,6 +221,25 @@ class TestCameraEndpoints:
         assert consumer.stopped == [camera_id]
         assert consumer.started == [camera_id]
 
+    def test_update_camera_reload_failure_does_not_persist_or_restart_consumer(self, client: TestClient) -> None:
+        mediamtx, consumer = install_recording_lifecycle_services(client)
+        response = client.post(
+            "/api/cameras/",
+            json={"name": "AI", "source_url": "rtsp://x", "ai_enabled": True},
+        )
+        camera_id = UUID(response.json()["id"])
+        mediamtx.reload_camera_counts.clear()
+        consumer.started.clear()
+        consumer.stopped.clear()
+        mediamtx.fail_next_reload = True
+
+        response = client.patch(f"/api/cameras/{camera_id}", json={"name": "AI Updated"})
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert client.get(f"/api/cameras/{camera_id}").json()["name"] == "AI"
+        assert consumer.started == []
+        assert consumer.stopped == []
+
     def test_delete_camera_stops_consumer_and_reloads_mediamtx(self, client: TestClient) -> None:
         mediamtx, consumer = install_recording_lifecycle_services(client)
         response = client.post(
@@ -217,6 +255,23 @@ class TestCameraEndpoints:
         assert response.status_code == 204
         assert consumer.stopped == [camera_id]
         assert mediamtx.reload_camera_counts == [0]
+
+    def test_delete_camera_reload_failure_does_not_remove_or_stop_consumer(self, client: TestClient) -> None:
+        mediamtx, consumer = install_recording_lifecycle_services(client)
+        response = client.post(
+            "/api/cameras/",
+            json={"name": "AI", "source_url": "rtsp://x", "ai_enabled": True},
+        )
+        camera_id = UUID(response.json()["id"])
+        mediamtx.reload_camera_counts.clear()
+        consumer.stopped.clear()
+        mediamtx.fail_next_reload = True
+
+        response = client.delete(f"/api/cameras/{camera_id}")
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert client.get(f"/api/cameras/{camera_id}").status_code == 200
+        assert consumer.stopped == []
 
     def test_get_missing_camera(self, client: TestClient) -> None:
         response = client.get("/api/cameras/00000000-0000-0000-0000-000000000000")

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -19,6 +21,8 @@ router = APIRouter()
 ManagerDep = Annotated[CameraManager, Depends(get_camera_manager)]
 MediaMTXDep = Annotated[MediaMTXManager, Depends(get_mediamtx_manager)]
 ConsumerDep = Annotated[StreamConsumer, Depends(get_stream_consumer)]
+
+logger = structlog.get_logger()
 
 
 class CreateCameraRequest(BaseModel):
@@ -35,6 +39,18 @@ class UpdateCameraRequest(BaseModel):
     name: str | None = None
     ai_enabled: bool | None = None
     ai_model: str | None = None
+
+
+async def _reload_mediamtx(mediamtx: MediaMTXManager, cameras: list[Camera]) -> None:
+    try:
+        await asyncio.to_thread(mediamtx.reload_config, cameras)
+    except Exception as exc:
+        logger.error("mediamtx_reload_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail="MediaMTX config reload failed") from exc
+
+
+def _replace_camera(cameras: list[Camera], replacement: Camera) -> list[Camera]:
+    return [replacement if camera.id == replacement.id else camera for camera in cameras]
 
 
 @router.get("/")
@@ -58,8 +74,12 @@ async def create_camera(
         onvif_username=body.onvif_username,
         onvif_password=body.onvif_password,
     )
-    created = await manager.add_camera(camera)
-    mediamtx.reload_config(manager.list_cameras())
+    await _reload_mediamtx(mediamtx, [*manager.list_cameras(), camera])
+    try:
+        created = await manager.add_camera(camera)
+    except Exception:
+        await _reload_mediamtx(mediamtx, manager.list_cameras())
+        raise
     consumer.start_camera(created)
     return created
 
@@ -83,11 +103,18 @@ async def update_camera(
     updates = body.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+    current = manager.get_camera(camera_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    candidate = current.model_copy(update=updates)
+    await _reload_mediamtx(mediamtx, _replace_camera(manager.list_cameras(), candidate))
     try:
         updated = await manager.update_camera(camera_id, **updates)
     except KeyError as err:
         raise HTTPException(status_code=404, detail="Camera not found") from err
-    mediamtx.reload_config(manager.list_cameras())
+    except Exception:
+        await _reload_mediamtx(mediamtx, manager.list_cameras())
+        raise
     consumer.stop_camera(camera_id)
     consumer.start_camera(updated)
     return updated
@@ -95,9 +122,16 @@ async def update_camera(
 
 @router.delete("/{camera_id}", status_code=204)
 async def delete_camera(camera_id: UUID, manager: ManagerDep, mediamtx: MediaMTXDep, consumer: ConsumerDep) -> None:
+    current = manager.get_camera(camera_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    remaining = [camera for camera in manager.list_cameras() if camera.id != camera_id]
+    await _reload_mediamtx(mediamtx, remaining)
     try:
         await manager.remove_camera(camera_id)
     except KeyError as err:
         raise HTTPException(status_code=404, detail="Camera not found") from err
+    except Exception:
+        await _reload_mediamtx(mediamtx, [*manager.list_cameras(), current])
+        raise
     consumer.stop_camera(camera_id)
-    mediamtx.reload_config(manager.list_cameras())

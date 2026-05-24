@@ -17,6 +17,14 @@ from fastapi.testclient import TestClient
 from onvify.inference.protocol import BackendHealth, BackendStatus
 
 
+class FakeInferenceBackend:
+    def __init__(self, status: BackendStatus) -> None:
+        self._status = status
+
+    async def health_check(self) -> BackendStatus:
+        return self._status
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """Create a test client with isolated database and lifespan."""
@@ -114,6 +122,10 @@ class TestStreamEndpoints:
 
 
 class TestDetectionEndpoints:
+    def _set_inference_backend(self, client: TestClient, status: BackendStatus) -> None:
+        app = cast(FastAPI, client.app)
+        app.state.inference_backend = FakeInferenceBackend(status)
+
     def test_detection_config(self, client: TestClient) -> None:
         response = client.get("/api/detection/config")
         assert response.status_code == 200
@@ -127,16 +139,14 @@ class TestDetectionEndpoints:
         assert response.json() == []
 
     def test_detection_health(self, client: TestClient) -> None:
-        class FakeBackend:
-            async def health_check(self) -> BackendStatus:
-                return BackendStatus(
-                    health=BackendHealth.HEALTHY,
-                    model_name="fake-model",
-                    device="test",
-                )
-
-        app = cast(FastAPI, client.app)
-        app.state.inference_backend = FakeBackend()
+        self._set_inference_backend(
+            client,
+            BackendStatus(
+                health=BackendHealth.HEALTHY,
+                model_name="fake-model",
+                device="test",
+            ),
+        )
         response = client.get("/api/detection/health")
 
         assert response.status_code == 200
@@ -146,6 +156,22 @@ class TestDetectionEndpoints:
             "device": "test",
             "message": None,
         }
+
+    def test_detection_health_unavailable_returns_503(self, client: TestClient) -> None:
+        self._set_inference_backend(
+            client,
+            BackendStatus(
+                health=BackendHealth.UNAVAILABLE,
+                model_name="fake-model",
+                device="test",
+                message="backend offline",
+            ),
+        )
+        response = client.get("/api/detection/health")
+
+        assert response.status_code == 503
+        assert response.json()["health"] == "unavailable"
+        assert response.json()["message"] == "backend offline"
 
 
 class TestWebSocket:

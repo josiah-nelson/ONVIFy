@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
 from onvify.api.dependencies import get_database, get_inference_backend, get_settings
 from onvify.config import Settings
-from onvify.inference.protocol import BackendStatus, InferenceBackend
+from onvify.inference.protocol import BackendHealth, BackendStatus, InferenceBackend
 from onvify.infrastructure.database import Database
 from onvify.models.detection import DetectionEvent
 
@@ -45,5 +45,8 @@ async def list_detection_events(
 
 
 @router.get("/health")
-async def get_detection_health(backend: InferenceBackendDep) -> BackendStatus:
-    return await backend.health_check()
+async def get_detection_health(backend: InferenceBackendDep, response: Response) -> BackendStatus:
+    status = await backend.health_check()
+    if status.health != BackendHealth.HEALTHY:
+        response.status_code = 503
+    return status

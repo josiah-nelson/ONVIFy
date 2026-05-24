@@ -62,11 +62,27 @@ class TestONVIFEventManager:
         mgr = ONVIFEventManager()
         assert mgr.renew("nonexistent") is None
 
+    async def test_renew_expired_returns_none(self) -> None:
+        mgr = ONVIFEventManager()
+        sub = mgr.subscribe("http://nvr:8080/events", "cam-1")
+        sub.expires_at = sub.expires_at - timedelta(hours=2)
+        assert mgr.renew(sub.id) is None
+
     async def test_expired_subscriptions_purged(self) -> None:
         mgr = ONVIFEventManager()
         sub = mgr.subscribe("http://nvr:8080/events", "cam-1")
         sub.expires_at = sub.expires_at - timedelta(hours=2)
         assert mgr.get_subscriptions("cam-1") == []
+
+    async def test_subscribe_rejects_loopback_url(self) -> None:
+        mgr = ONVIFEventManager()
+        with pytest.raises(ValueError, match="rejected"):
+            mgr.subscribe("http://127.0.0.1:8080/events", "cam-1")
+
+    async def test_subscribe_rejects_link_local_url(self) -> None:
+        mgr = ONVIFEventManager()
+        with pytest.raises(ValueError, match="rejected"):
+            mgr.subscribe("http://169.254.169.254/metadata", "cam-1")
 
     async def test_notify_motion_no_subscribers(self) -> None:
         mgr = ONVIFEventManager()
@@ -96,28 +112,36 @@ class TestBuildMotionNotify:
 
 
 class TestParseSubscribeRequest:
-    def test_extracts_callback_url(self) -> None:
-        body = """
-        <wsnt:Subscribe>
-            <wsnt:ConsumerReference>
-                <wsa:Address>http://192.168.1.50:8080/onvif_events</wsa:Address>
-            </wsnt:ConsumerReference>
-        </wsnt:Subscribe>
-        """
+    def test_extracts_callback_url_from_consumer_reference(self) -> None:
+        body = (
+            '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"'
+            ' xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing"'
+            ' xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2">'
+            "<s:Header>"
+            "<wsa:ReplyTo><wsa:Address>http://www.w3.org/2005/08/addressing/anonymous</wsa:Address></wsa:ReplyTo>"
+            "</s:Header>"
+            "<s:Body><wsnt:Subscribe>"
+            "<wsnt:ConsumerReference>"
+            "<wsa:Address>http://192.168.1.50:8080/onvif_events</wsa:Address>"
+            "</wsnt:ConsumerReference>"
+            "</wsnt:Subscribe></s:Body>"
+            "</s:Envelope>"
+        )
         result = parse_subscribe_request(body)
         assert result["callback_url"] == "http://192.168.1.50:8080/onvif_events"
 
-    def test_extracts_ttl(self) -> None:
-        body = """
-        <wsnt:Subscribe>
-            <wsnt:InitialTerminationTime>PT3600S</wsnt:InitialTerminationTime>
-        </wsnt:Subscribe>
-        """
+    def test_extracts_ttl_as_timedelta(self) -> None:
+        body = (
+            '<wsnt:Subscribe xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2">'
+            "<wsnt:InitialTerminationTime>PT3600S</wsnt:InitialTerminationTime>"
+            "</wsnt:Subscribe>"
+        )
         result = parse_subscribe_request(body)
-        assert result["ttl_raw"] == "PT3600S"
+        assert result["ttl"] == timedelta(seconds=3600)
 
     def test_handles_missing_fields(self) -> None:
-        result = parse_subscribe_request("<wsnt:Subscribe></wsnt:Subscribe>")
+        body = '<wsnt:Subscribe xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2"></wsnt:Subscribe>'
+        result = parse_subscribe_request(body)
         assert "callback_url" not in result
 
 

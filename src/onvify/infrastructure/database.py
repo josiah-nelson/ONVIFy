@@ -15,7 +15,7 @@ import aiosqlite
 import structlog
 
 from onvify.models.camera import Camera
-from onvify.models.detection import DetectionEvent
+from onvify.models.detection import Detection, DetectionEvent
 
 logger = structlog.get_logger()
 
@@ -35,8 +35,13 @@ CREATE TABLE IF NOT EXISTS detection_events (
     detections_json TEXT NOT NULL,
     inference_time_ms REAL,
     backend TEXT,
+    frame_width INTEGER,
+    frame_height INTEGER,
     FOREIGN KEY (camera_id) REFERENCES cameras(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_detection_events_camera_ts
+    ON detection_events (camera_id, timestamp DESC);
 """
 
 
@@ -104,8 +109,9 @@ class Database:
     async def save_detection_event(self, event: DetectionEvent) -> None:
         detections_json = json.dumps([d.model_dump() for d in event.detections])
         await self.connection.execute(
-            """INSERT INTO detection_events (id, camera_id, timestamp, detections_json, inference_time_ms, backend)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO detection_events
+               (id, camera_id, timestamp, detections_json, inference_time_ms, backend, frame_width, frame_height)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 str(event.id),
                 str(event.camera_id),
@@ -113,6 +119,8 @@ class Database:
                 detections_json,
                 event.inference_time_ms,
                 event.backend,
+                event.frame_width,
+                event.frame_height,
             ),
         )
         await self.connection.commit()
@@ -124,21 +132,21 @@ class Database:
     ) -> list[DetectionEvent]:
         if camera_id:
             cursor = await self.connection.execute(
-                "SELECT id, camera_id, timestamp, detections_json, inference_time_ms, backend "
+                "SELECT id, camera_id, timestamp, detections_json, inference_time_ms, backend, "
+                "frame_width, frame_height "
                 "FROM detection_events WHERE camera_id = ? ORDER BY timestamp DESC LIMIT ?",
                 (str(camera_id), limit),
             )
         else:
             cursor = await self.connection.execute(
-                "SELECT id, camera_id, timestamp, detections_json, inference_time_ms, backend "
+                "SELECT id, camera_id, timestamp, detections_json, inference_time_ms, backend, "
+                "frame_width, frame_height "
                 "FROM detection_events ORDER BY timestamp DESC LIMIT ?",
                 (limit,),
             )
         rows = await cursor.fetchall()
         events: list[DetectionEvent] = []
         for row in rows:
-            from onvify.models.detection import Detection
-
             detections = [Detection.model_validate(d) for d in json.loads(row[3])]
             events.append(
                 DetectionEvent(
@@ -148,6 +156,8 @@ class Database:
                     detections=detections,
                     inference_time_ms=row[4],
                     backend=row[5] or "unknown",
+                    frame_width=row[6],
+                    frame_height=row[7],
                 )
             )
         return events

@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.ws_manager = ws_manager
 
         backend = create_inference_backend(settings.inference)
+        app.state.inference_backend = backend
         consumer = StreamConsumer(
             camera_manager=manager,
             backend=backend,

@@ -15,6 +15,7 @@ from onvify.config import Settings
 
 if TYPE_CHECKING:
     from onvify.api.websocket import ConnectionManager
+    from onvify.inference.protocol import InferenceBackend
     from onvify.infrastructure.database import Database
     from onvify.services.camera_manager import CameraManager
     from onvify.services.stream_consumer import StreamConsumer
@@ -44,3 +45,7 @@ def get_ws_manager(request: Request) -> ConnectionManager:
 
 def get_stream_consumer(request: Request) -> StreamConsumer:
     return request.app.state.stream_consumer  # type: ignore[no-any-return]
+
+
+def get_inference_backend(request: Request) -> InferenceBackend:
+    return request.app.state.inference_backend  # type: ignore[no-any-return]

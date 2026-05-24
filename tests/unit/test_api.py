@@ -8,9 +8,27 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
+from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+
+from onvify.inference.protocol import BackendHealth, BackendStatus
+
+
+class FakeInferenceBackend:
+    def __init__(self, status: BackendStatus) -> None:
+        self._status = status
+
+    async def health_check(self) -> BackendStatus:
+        return self._status
+
+
+class FailingInferenceBackend:
+    async def health_check(self) -> BackendStatus:
+        msg = "backend exploded"
+        raise RuntimeError(msg)
 
 
 @pytest.fixture
@@ -110,6 +128,10 @@ class TestStreamEndpoints:
 
 
 class TestDetectionEndpoints:
+    def _set_inference_backend(self, client: TestClient, status: BackendStatus) -> None:
+        app = cast(FastAPI, client.app)
+        app.state.inference_backend = FakeInferenceBackend(status)
+
     def test_detection_config(self, client: TestClient) -> None:
         response = client.get("/api/detection/config")
         assert response.status_code == 200
@@ -121,6 +143,52 @@ class TestDetectionEndpoints:
         response = client.get("/api/detection/events")
         assert response.status_code == 200
         assert response.json() == []
+
+    def test_detection_health(self, client: TestClient) -> None:
+        self._set_inference_backend(
+            client,
+            BackendStatus(
+                health=BackendHealth.HEALTHY,
+                model_name="fake-model",
+                device="test",
+            ),
+        )
+        response = client.get("/api/detection/health")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "health": "healthy",
+            "model_name": "fake-model",
+            "device": "test",
+            "message": None,
+        }
+
+    @pytest.mark.parametrize("health", [BackendHealth.UNAVAILABLE, BackendHealth.DEGRADED])
+    def test_detection_health_non_healthy_returns_503(self, client: TestClient, health: BackendHealth) -> None:
+        self._set_inference_backend(
+            client,
+            BackendStatus(
+                health=health,
+                model_name="fake-model",
+                device="test",
+                message=f"backend {health.value}",
+            ),
+        )
+        response = client.get("/api/detection/health")
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert response.json()["health"] == health.value
+        assert response.json()["message"] == f"backend {health.value}"
+
+    def test_detection_health_exception_returns_503(self, client: TestClient) -> None:
+        app = cast(FastAPI, client.app)
+        app.state.inference_backend = FailingInferenceBackend()
+
+        response = client.get("/api/detection/health")
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert response.json()["health"] == "unavailable"
+        assert response.json()["message"] == "backend exploded"
 
 
 class TestWebSocket:

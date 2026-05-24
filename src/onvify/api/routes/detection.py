@@ -5,16 +5,19 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
+from fastapi import status as http_status
 
-from onvify.api.dependencies import get_database, get_settings
+from onvify.api.dependencies import get_database, get_inference_backend, get_settings
 from onvify.config import Settings
+from onvify.inference.protocol import BackendHealth, BackendStatus, InferenceBackend
 from onvify.infrastructure.database import Database
 from onvify.models.detection import DetectionEvent
 
 router = APIRouter()
 
 DatabaseDep = Annotated[Database, Depends(get_database)]
+InferenceBackendDep = Annotated[InferenceBackend, Depends(get_inference_backend)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
@@ -40,3 +43,16 @@ async def list_detection_events(
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
 ) -> list[DetectionEvent]:
     return await db.list_detection_events(camera_id=camera_id, limit=limit)
+
+
+@router.get("/health")
+async def get_detection_health(backend: InferenceBackendDep, response: Response) -> BackendStatus:
+    try:
+        backend_status = await backend.health_check()
+    except Exception as exc:
+        response.status_code = http_status.HTTP_503_SERVICE_UNAVAILABLE
+        return BackendStatus(health=BackendHealth.UNAVAILABLE, message=str(exc))
+
+    if backend_status.health != BackendHealth.HEALTHY:
+        response.status_code = http_status.HTTP_503_SERVICE_UNAVAILABLE
+    return backend_status

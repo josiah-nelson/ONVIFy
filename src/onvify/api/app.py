@@ -13,8 +13,10 @@ from onvify import __version__
 from onvify.api.dependencies import get_settings
 from onvify.api.routes import cameras, detection, streams, system
 from onvify.api.websocket import ConnectionManager
+from onvify.inference.factory import create_inference_backend
 from onvify.infrastructure.database import Database
 from onvify.services.camera_manager import CameraManager
+from onvify.services.stream_consumer import StreamConsumer
 from onvify.services.streaming import MediaMTXManager
 
 logger = structlog.get_logger()
@@ -38,17 +40,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         mediamtx.write_config(manager.list_cameras())
         app.state.mediamtx = mediamtx
 
-        app.state.ws_manager = ConnectionManager()
+        ws_manager = ConnectionManager()
+        app.state.ws_manager = ws_manager
+
+        backend = create_inference_backend(settings.inference)
+        consumer = StreamConsumer(
+            camera_manager=manager,
+            backend=backend,
+            database=db,
+            ws_manager=ws_manager,
+            motion_sensitivity=settings.inference.motion_sensitivity,
+            confidence_threshold=settings.inference.confidence_threshold / 100.0,
+            cooldown_seconds=settings.inference.cooldown_seconds,
+            reconnect_base=settings.streaming.grabber_reconnect_base,
+            reconnect_max=settings.streaming.grabber_reconnect_max,
+            target_interval=settings.inference.target_interval,
+        )
+        consumer.start_all()
+        app.state.stream_consumer = consumer
 
         logger.info(
             "onvify_started",
             version=__version__,
             cameras=len(manager.list_cameras()),
+            ai_cameras=len(consumer.active_cameras),
             inference_backend=settings.inference.backend,
         )
 
         yield
     finally:
+        if hasattr(app.state, "stream_consumer"):
+            await app.state.stream_consumer.stop_all_async()
         if hasattr(app.state, "mediamtx"):
             app.state.mediamtx.stop()
         await db.disconnect()

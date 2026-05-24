@@ -35,6 +35,8 @@ class TestSystemEndpoints:
         data = response.json()
         assert data["status"] == "ok"
         assert "version" in data
+        assert "cameras_total" in data
+        assert "ai_consumers_active" in data
 
     def test_version(self, client: TestClient) -> None:
         response = client.get("/api/system/version")
@@ -89,9 +91,22 @@ class TestCameraEndpoints:
 
 
 class TestStreamEndpoints:
-    def test_list_streams_stub(self, client: TestClient) -> None:
+    def test_list_streams_empty(self, client: TestClient) -> None:
         response = client.get("/api/streams/")
         assert response.status_code == 200
+        assert response.json() == []
+
+    def test_list_streams_with_camera(self, client: TestClient) -> None:
+        client.post("/api/cameras/", json={"name": "S", "source_url": "rtsp://x"})
+        response = client.get("/api/streams/")
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["camera_name"] == "S"
+        assert data[0]["ai_active"] is False
+
+    def test_mjpeg_preview_missing_camera(self, client: TestClient) -> None:
+        response = client.get("/api/streams/00000000-0000-0000-0000-000000000000/mjpeg")
+        assert response.status_code == 404
 
 
 class TestDetectionEndpoints:
@@ -106,3 +121,9 @@ class TestDetectionEndpoints:
         response = client.get("/api/detection/events")
         assert response.status_code == 200
         assert response.json() == []
+
+
+class TestWebSocket:
+    def test_websocket_connect_disconnect(self, client: TestClient) -> None:
+        with client.websocket_connect("/api/system/ws") as ws:
+            assert ws is not None

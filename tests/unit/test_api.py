@@ -12,10 +12,10 @@ from typing import cast
 from uuid import UUID
 
 import pytest
-from fastapi import FastAPI, status
+from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
-from onvify.api.routes.cameras import delete_camera
+from onvify.api.routes.cameras import UpdateCameraRequest, delete_camera, update_camera
 from onvify.inference.protocol import BackendHealth, BackendStatus
 from onvify.models.camera import Camera, Stream, StreamType
 from onvify.services.camera_manager import CameraManager
@@ -241,6 +241,37 @@ class TestCameraEndpoints:
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert client.get(f"/api/cameras/{camera_id}").json()["name"] == "AI"
+        assert consumer.started == []
+        assert consumer.stopped == []
+
+    @pytest.mark.asyncio
+    async def test_update_camera_key_error_rolls_back_config(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        manager = CameraManager()
+        camera = Camera(name="AI", source_streams=[Stream(url="rtsp://x")], ai_enabled=True)
+        await manager.add_camera(camera)
+        mediamtx = RecordingMediaMTXManager()
+        consumer = RecordingStreamConsumer()
+
+        async def fail_update(camera_id: UUID, **kwargs: object) -> Camera:
+            msg = f"Camera {camera_id} not found"
+            raise KeyError(msg)
+
+        monkeypatch.setattr(manager, "update_camera", fail_update)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_camera(
+                camera.id,
+                UpdateCameraRequest(name="AI Updated"),
+                manager,
+                cast(MediaMTXManager, mediamtx),
+                cast(StreamConsumer, consumer),
+            )
+
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+        assert mediamtx.reload_camera_counts == [1, 1]
         assert consumer.started == []
         assert consumer.stopped == []
 

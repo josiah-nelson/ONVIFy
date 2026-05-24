@@ -49,6 +49,8 @@ class CameraManager:
         if self._db:
             await self._db.save_camera(camera)
         self._cameras[camera.id] = camera
+        if self._db:
+            await self._db.save_camera(camera)
         logger.info("camera_added", camera_id=str(camera.id), name=camera.name)
         return camera
 
@@ -65,18 +67,19 @@ class CameraManager:
         if self._db:
             await self._db.save_camera(updated)
         self._cameras[camera_id] = updated
+        if self._db:
+            await self._db.save_camera(updated)
         logger.info("camera_updated", camera_id=str(camera_id), fields=list(kwargs.keys()))
         return updated
 
     async def remove_camera(self, camera_id: UUID) -> Camera:
-        camera = self._cameras.get(camera_id)
+        camera = self._cameras.pop(camera_id, None)
         if camera is None:
             msg = f"Camera {camera_id} not found"
             raise KeyError(msg)
 
         if self._db:
             await self._db.delete_camera(camera_id)
-        del self._cameras[camera_id]
         logger.info("camera_removed", camera_id=str(camera_id), name=camera.name)
         return camera
 

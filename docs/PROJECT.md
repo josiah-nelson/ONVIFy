@@ -70,7 +70,8 @@ Main Process (FastAPI + Uvicorn)
 
 At startup ONVIFy resolves a MediaMTX binary by using `MEDIAMTX_BIN` when set, or
 by downloading the configured `MEDIAMTX_VERSION` release into `data/bin/mediamtx/`.
-The binary is version-checked with `mediamtx --version` before the managed
+Downloaded archives are checked against the release `checksums.sha256`, and the
+extracted binary is version-checked with `mediamtx --version` before the managed
 subprocess is started.
 
 ### Tech Stack

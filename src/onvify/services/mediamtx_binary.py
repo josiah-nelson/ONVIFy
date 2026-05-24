@@ -11,9 +11,10 @@ import tarfile
 import tempfile
 import zipfile
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Literal
-from urllib.request import urlretrieve
+from urllib.request import urlopen
 
 import structlog
 
@@ -22,6 +23,7 @@ from onvify.config import Settings
 logger = structlog.get_logger()
 
 RELEASE_BASE_URL = "https://github.com/bluenviron/mediamtx/releases/download"
+DOWNLOAD_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,10 @@ def mediamtx_download_url(version: str, release_platform: MediaMTXReleasePlatfor
     return f"{RELEASE_BASE_URL}/{version}/{asset_name}"
 
 
+def mediamtx_checksums_url(version: str) -> str:
+    return f"{RELEASE_BASE_URL}/{version}/checksums.sha256"
+
+
 def resolve_mediamtx_binary(settings: Settings) -> Path | None:
     """Return a usable MediaMTX binary, downloading the configured version when enabled."""
     version = settings.streaming.mediamtx_version
@@ -94,11 +100,15 @@ def resolve_mediamtx_binary(settings: Settings) -> Path | None:
         return binary
 
     url = mediamtx_download_url(version, release_platform)
+    checksums_url = mediamtx_checksums_url(version)
     archive_name = mediamtx_asset_name(version, release_platform)
     with tempfile.TemporaryDirectory(prefix="onvify-mediamtx-") as tmp_dir:
         archive_path = Path(tmp_dir) / archive_name
+        checksums_path = Path(tmp_dir) / "checksums.sha256"
         logger.info("mediamtx_binary_download_started", url=url)
-        urlretrieve(url, str(archive_path))
+        _download_file(url, archive_path)
+        _download_file(checksums_url, checksums_path)
+        _verify_checksum(archive_path, checksums_path)
         _extract_binary(archive_path, release_platform, binary)
 
     _ensure_binary_version(binary, version)
@@ -158,6 +168,31 @@ def _ensure_binary_version(binary: Path, version: str) -> None:
         raise RuntimeError(msg)
 
 
+def _download_file(url: str, destination: Path) -> None:
+    with urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response, destination.open("wb") as output:
+        shutil.copyfileobj(response, output)
+
+
+def _verify_checksum(archive_path: Path, checksums_path: Path) -> None:
+    expected = _read_expected_checksum(checksums_path, archive_path.name)
+    actual = sha256(archive_path.read_bytes()).hexdigest()
+    if actual != expected:
+        msg = f"Checksum mismatch for {archive_path.name}"
+        raise RuntimeError(msg)
+
+
+def _read_expected_checksum(checksums_path: Path, archive_name: str) -> str:
+    for line in checksums_path.read_text().splitlines():
+        parts = line.strip().split()
+        if len(parts) < 2:
+            continue
+        checksum, filename = parts[0], parts[-1].lstrip("*")
+        if Path(filename).name == archive_name:
+            return checksum
+    msg = f"Checksum for {archive_name!r} not found in {checksums_path.name}"
+    raise RuntimeError(msg)
+
+
 def _extract_binary(
     archive_path: Path,
     release_platform: MediaMTXReleasePlatform,
@@ -181,7 +216,7 @@ def _extract_from_tar(archive_path: Path, executable_name: str, binary_path: Pat
             if source is None:
                 break
             with source:
-                binary_path.write_bytes(source.read())
+                _write_binary_atomic(binary_path, source.read())
             return
     msg = f"MediaMTX binary {executable_name!r} not found in {archive_path.name}"
     raise RuntimeError(msg)
@@ -193,7 +228,21 @@ def _extract_from_zip(archive_path: Path, executable_name: str, binary_path: Pat
             if Path(member).name != executable_name:
                 continue
             with archive.open(member) as source:
-                binary_path.write_bytes(source.read())
+                _write_binary_atomic(binary_path, source.read())
             return
     msg = f"MediaMTX binary {executable_name!r} not found in {archive_path.name}"
     raise RuntimeError(msg)
+
+
+def _write_binary_atomic(binary_path: Path, data: bytes) -> None:
+    binary_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=binary_path.parent, prefix=f".{binary_path.name}.", delete=False) as tmp:
+        tmp.write(data)
+        tmp_path = Path(tmp.name)
+    try:
+        if os.name != "nt":
+            tmp_path.chmod(tmp_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        os.replace(tmp_path, binary_path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise

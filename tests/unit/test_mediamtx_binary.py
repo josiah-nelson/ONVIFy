@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import tarfile
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -25,13 +26,17 @@ def _write_fake_mediamtx(path: Path, version: str) -> None:
     path.chmod(path.stat().st_mode | 0o755)
 
 
-def _make_tar_archive(tmp_path: Path, version: str) -> Path:
+def _make_tar_archive(tmp_path: Path, version: str, archive_version: str | None = None) -> Path:
     source = tmp_path / "mediamtx"
     _write_fake_mediamtx(source, version)
-    archive_path = tmp_path / f"mediamtx_{version}_linux_amd64.tar.gz"
+    archive_path = tmp_path / f"mediamtx_{archive_version or version}_linux_amd64.tar.gz"
     with tarfile.open(archive_path, "w:gz") as archive:
         archive.add(source, arcname="mediamtx")
     return archive_path
+
+
+def _checksums_text(archive_path: Path, checksum: str | None = None) -> str:
+    return f"{checksum or sha256(archive_path.read_bytes()).hexdigest()}  {archive_path.name}\n"
 
 
 class TestMediaMTXPlatform:
@@ -97,11 +102,13 @@ class TestMediaMTXBinaryResolution:
             lambda: detect_mediamtx_platform("Linux", "x86_64"),
         )
 
-        def fake_urlretrieve(url: str, filename: str | os.PathLike[str]) -> tuple[str, None]:
-            shutil.copyfile(archive_path, filename)
-            return (str(filename), None)
+        def fake_download(url: str, destination: Path) -> None:
+            if url.endswith("checksums.sha256"):
+                destination.write_text(_checksums_text(archive_path))
+            else:
+                shutil.copyfile(archive_path, destination)
 
-        monkeypatch.setattr(mediamtx_binary, "urlretrieve", fake_urlretrieve)
+        monkeypatch.setattr(mediamtx_binary, "_download_file", fake_download)
 
         binary = resolve_mediamtx_binary(settings)
 
@@ -114,7 +121,7 @@ class TestMediaMTXBinaryResolution:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        archive_path = _make_tar_archive(tmp_path, "v1.0.0")
+        archive_path = _make_tar_archive(tmp_path, "v1.0.0", archive_version="v1.18.2")
         settings = Settings(root_dir=tmp_path, streaming=StreamingSettings(mediamtx_auto_download=True))
 
         monkeypatch.setattr(
@@ -123,11 +130,34 @@ class TestMediaMTXBinaryResolution:
             lambda: detect_mediamtx_platform("Linux", "x86_64"),
         )
 
-        def fake_urlretrieve(url: str, filename: str | os.PathLike[str]) -> tuple[str, None]:
-            shutil.copyfile(archive_path, filename)
-            return (str(filename), None)
+        def fake_download(url: str, destination: Path) -> None:
+            if url.endswith("checksums.sha256"):
+                destination.write_text(_checksums_text(archive_path))
+            else:
+                shutil.copyfile(archive_path, destination)
 
-        monkeypatch.setattr(mediamtx_binary, "urlretrieve", fake_urlretrieve)
+        monkeypatch.setattr(mediamtx_binary, "_download_file", fake_download)
 
         with pytest.raises(RuntimeError, match="expected version"):
+            resolve_mediamtx_binary(settings)
+
+    def test_download_rejects_checksum_mismatch(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        archive_path = _make_tar_archive(tmp_path, "v1.18.2")
+        settings = Settings(root_dir=tmp_path, streaming=StreamingSettings(mediamtx_auto_download=True))
+
+        monkeypatch.setattr(
+            mediamtx_binary,
+            "detect_mediamtx_platform",
+            lambda: detect_mediamtx_platform("Linux", "x86_64"),
+        )
+
+        def fake_download(url: str, destination: Path) -> None:
+            if url.endswith("checksums.sha256"):
+                destination.write_text(_checksums_text(archive_path, "0" * 64))
+            else:
+                shutil.copyfile(archive_path, destination)
+
+        monkeypatch.setattr(mediamtx_binary, "_download_file", fake_download)
+
+        with pytest.raises(RuntimeError, match="Checksum mismatch"):
             resolve_mediamtx_binary(settings)

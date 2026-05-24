@@ -49,9 +49,9 @@ cp .env.example .env
 All settings have sensible defaults. The server starts with zero configuration.
 
 By default ONVIFy downloads the configured MediaMTX release into `data/bin/mediamtx/`
-on first run and verifies `mediamtx --version` before starting it. Set
-`MEDIAMTX_AUTO_DOWNLOAD=false` to disable this, or `MEDIAMTX_BIN=/path/to/mediamtx`
-to use a preinstalled binary.
+on first run, verifies the archive against `checksums.sha256`, and checks
+`mediamtx --version` before starting it. Set `MEDIAMTX_AUTO_DOWNLOAD=false` to
+disable this, or `MEDIAMTX_BIN=/path/to/mediamtx` to use a preinstalled binary.
 
 ---
 

@@ -24,6 +24,7 @@ type DetectionEvent = GetResponse<"/api/detection/events">[number];
 type CreateCameraRequest = components["schemas"]["CreateCameraRequest"];
 type StreamType = components["schemas"]["StreamType"];
 type UpdateCameraRequest = components["schemas"]["UpdateCameraRequest"];
+type FormStreamType = StreamType | "unknown";
 
 type DashboardState = {
   health: Health | null;
@@ -38,7 +39,7 @@ type CameraFormState = {
   ai_model: string;
   name: string;
   source_url: string;
-  stream_type: StreamType;
+  stream_type: FormStreamType;
 };
 
 type CameraFormStatus = {
@@ -116,7 +117,7 @@ function cameraToForm(camera: CameraRow): CameraFormState {
     ai_model: camera.ai_model ?? "",
     name: camera.name,
     source_url: cameraSourceUrl(camera),
-    stream_type: streamType === "unknown" ? "rtsp" : streamType
+    stream_type: streamType
   };
 }
 
@@ -173,6 +174,7 @@ export default function App(): ReactElement {
     setEditingCameraId(null);
     setCameraForm({ ...emptyCameraForm });
     setFormStatus((current) => ({ ...current, error: null, message: null }));
+    setDeleteStatus({ ...initialDeleteStatus });
   }, []);
 
   const editCamera = (camera: CameraRow): void => {
@@ -182,6 +184,7 @@ export default function App(): ReactElement {
     setEditingCameraId(camera.id);
     setCameraForm(cameraToForm(camera));
     setFormStatus((current) => ({ ...current, error: null, message: null }));
+    setDeleteStatus({ ...initialDeleteStatus });
   };
 
   const submitCameraForm = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -189,7 +192,11 @@ export default function App(): ReactElement {
     const name = cameraForm.name.trim();
     const sourceUrl = cameraForm.source_url.trim();
     if (!name || (!editingCameraId && !sourceUrl)) {
-      setFormStatus((current) => ({ ...current, error: "Name and source URL are required.", message: null }));
+      setFormStatus((current) => ({
+        ...current,
+        error: editingCameraId ? "Name is required." : "Name and source URL are required.",
+        message: null
+      }));
       return;
     }
 
@@ -220,7 +227,7 @@ export default function App(): ReactElement {
           ai_model: nullableText(cameraForm.ai_model),
           name,
           source_url: sourceUrl,
-          stream_type: cameraForm.stream_type
+          stream_type: cameraForm.stream_type === "unknown" ? "rtsp" : cameraForm.stream_type
         };
         const created = await readApiResponse(api.POST("/api/cameras/", { body }), "POST /api/cameras/");
         setCameraForm({ ...emptyCameraForm });
@@ -331,7 +338,7 @@ export default function App(): ReactElement {
                 <tbody>
                   {state.cameras.length > 0 ? (
                     state.cameras.map((camera) => (
-                      <tr key={camera.id ?? camera.name} className="border-t border-border">
+                      <tr key={camera.id} className="border-t border-border">
                         <td className="px-4 py-3 font-medium">{camera.name}</td>
                         <td className="px-4 py-3">
                           <div className="flex min-w-0 max-w-[18rem] items-center gap-2">
@@ -439,9 +446,14 @@ export default function App(): ReactElement {
                 <select
                   className="h-10 rounded-md border border-border bg-background px-3 font-normal outline-none focus:ring-2 focus:ring-cyan-500 disabled:bg-muted"
                   value={cameraForm.stream_type}
-                  onChange={(event) => setCameraForm((current) => ({ ...current, stream_type: event.target.value as StreamType }))}
+                  onChange={(event) => setCameraForm((current) => ({ ...current, stream_type: event.target.value as FormStreamType }))}
                   disabled={Boolean(editingCameraId)}
                 >
+                  {cameraForm.stream_type === "unknown" ? (
+                    <option value="unknown" disabled>
+                      Unknown
+                    </option>
+                  ) : null}
                   <option value="rtsp">RTSP</option>
                   <option value="mjpeg">MJPEG</option>
                 </select>

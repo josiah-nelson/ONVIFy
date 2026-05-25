@@ -363,7 +363,7 @@ export default function App(): ReactElement {
                               variant="outline"
                               className="h-8 px-2 text-rose-700 hover:bg-rose-50"
                               onClick={() => void deleteCamera(camera)}
-                              disabled={!camera.id || formStatus.saving || deleteStatus.removingCameraId === camera.id}
+                              disabled={!camera.id || formStatus.saving || Boolean(deleteStatus.removingCameraId)}
                               title="Delete camera"
                             >
                               <Trash2 className="h-4 w-4" />

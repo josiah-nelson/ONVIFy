@@ -42,10 +42,15 @@ type CameraFormState = {
 };
 
 type CameraFormStatus = {
-  deletingCameraId: string | null;
   error: string | null;
   message: string | null;
   saving: boolean;
+};
+
+type DeleteStatus = {
+  error: string | null;
+  message: string | null;
+  removingCameraId: string | null;
 };
 
 const initialState: DashboardState = {
@@ -65,10 +70,15 @@ const emptyCameraForm: CameraFormState = {
 };
 
 const initialFormStatus: CameraFormStatus = {
-  deletingCameraId: null,
   error: null,
   message: null,
   saving: false
+};
+
+const initialDeleteStatus: DeleteStatus = {
+  error: null,
+  message: null,
+  removingCameraId: null
 };
 
 const REFRESH_INTERVAL_MS = 30_000;
@@ -121,6 +131,7 @@ export default function App(): ReactElement {
   const [cameraForm, setCameraForm] = useState<CameraFormState>(emptyCameraForm);
   const [editingCameraId, setEditingCameraId] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState<CameraFormStatus>(initialFormStatus);
+  const [deleteStatus, setDeleteStatus] = useState<DeleteStatus>(initialDeleteStatus);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (refreshInFlight.current) {
@@ -228,7 +239,7 @@ export default function App(): ReactElement {
     if (!camera.id || !window.confirm(`Delete ${camera.name}?`)) {
       return;
     }
-    setFormStatus((current) => ({ ...current, deletingCameraId: camera.id ?? null, error: null, message: null }));
+    setDeleteStatus({ error: null, message: null, removingCameraId: camera.id });
     try {
       await ensureApiSuccess(
         api.DELETE("/api/cameras/{camera_id}", { params: { path: { camera_id: camera.id } } }),
@@ -238,12 +249,12 @@ export default function App(): ReactElement {
       if (editingCameraId === camera.id) {
         resetCameraForm();
       }
-      setFormStatus((current) => ({ ...current, error: null, message: "Camera deleted." }));
+      setDeleteStatus({ error: null, message: "Camera deleted.", removingCameraId: null });
       void refresh();
     } catch (error) {
-      setFormStatus((current) => ({ ...current, error: errorMessage(error), message: null }));
+      setDeleteStatus({ error: errorMessage(error), message: null, removingCameraId: null });
     } finally {
-      setFormStatus((current) => ({ ...current, deletingCameraId: null }));
+      setDeleteStatus((current) => ({ ...current, removingCameraId: null }));
     }
   };
 
@@ -290,11 +301,22 @@ export default function App(): ReactElement {
           <div className="overflow-hidden rounded-md border border-border bg-white">
             <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
               <h2 className="text-base font-semibold">Cameras</h2>
-              <Button variant="outline" onClick={resetCameraForm} disabled={formStatus.saving}>
+              <Button variant="outline" onClick={resetCameraForm} disabled={formStatus.saving || Boolean(deleteStatus.removingCameraId)}>
                 <Plus className="h-4 w-4" />
                 Add
               </Button>
             </div>
+            {deleteStatus.error ? (
+              <div className="flex items-center gap-2 border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-800">
+                <CircleAlert className="h-4 w-4 shrink-0" />
+                <span>{deleteStatus.error}</span>
+              </div>
+            ) : null}
+            {deleteStatus.message ? (
+              <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+                {deleteStatus.message}
+              </div>
+            ) : null}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[46rem] text-sm">
                 <thead className="bg-muted text-left text-muted-foreground">
@@ -331,7 +353,7 @@ export default function App(): ReactElement {
                               variant="outline"
                               className="h-8 px-2"
                               onClick={() => editCamera(camera)}
-                              disabled={!camera.id || formStatus.saving}
+                              disabled={!camera.id || formStatus.saving || Boolean(deleteStatus.removingCameraId)}
                               title="Edit camera"
                             >
                               <Pencil className="h-4 w-4" />
@@ -341,7 +363,7 @@ export default function App(): ReactElement {
                               variant="outline"
                               className="h-8 px-2 text-rose-700 hover:bg-rose-50"
                               onClick={() => void deleteCamera(camera)}
-                              disabled={!camera.id || formStatus.saving || formStatus.deletingCameraId === camera.id}
+                              disabled={!camera.id || formStatus.saving || deleteStatus.removingCameraId === camera.id}
                               title="Delete camera"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -367,7 +389,12 @@ export default function App(): ReactElement {
             <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4 py-3">
               <h2 className="text-base font-semibold">{editingCameraId ? "Edit camera" : "Add camera"}</h2>
               {editingCameraId ? (
-                <Button variant="outline" className="h-8 px-2" onClick={resetCameraForm} disabled={formStatus.saving}>
+                <Button
+                  variant="outline"
+                  className="h-8 px-2"
+                  onClick={resetCameraForm}
+                  disabled={formStatus.saving || Boolean(deleteStatus.removingCameraId)}
+                >
                   <X className="h-4 w-4" />
                   Cancel
                 </Button>
@@ -439,7 +466,7 @@ export default function App(): ReactElement {
                 />
               </label>
 
-              <Button type="submit" disabled={formStatus.saving}>
+              <Button type="submit" disabled={formStatus.saving || Boolean(deleteStatus.removingCameraId)}>
                 {editingCameraId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                 {editingCameraId ? "Save changes" : "Create camera"}
               </Button>

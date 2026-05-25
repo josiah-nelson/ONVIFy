@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import structlog
 from starlette.requests import Request
@@ -56,6 +57,16 @@ def _path_context(path: str) -> dict[str, str]:
     parts = [part for part in path.split("/") if part]
     if len(parts) < 3 or parts[0] != "api":
         return {}
-    if parts[1] in {"cameras", "streams"}:
+    if parts[1] == "cameras" and _is_uuid(parts[2]):
+        return {"camera_id": parts[2]}
+    if len(parts) >= 4 and parts[1] == "streams" and parts[3] == "mjpeg" and _is_uuid(parts[2]):
         return {"camera_id": parts[2]}
     return {}
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        UUID(value)
+    except ValueError:
+        return False
+    return True

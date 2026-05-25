@@ -15,6 +15,17 @@ export async function readApiResponse<T>(
   throw new Error(`${path} returned ${response.status}: ${apiErrorMessage(error)}`);
 }
 
+export async function ensureApiSuccess(
+  request: Promise<{ error?: unknown; response: Response }>,
+  path: string
+): Promise<void> {
+  const { error, response } = await request;
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${path} returned ${response.status}: ${apiErrorMessage(error)}`);
+}
+
 function apiErrorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "detail" in error) {
     const detail = (error as { detail?: unknown }).detail;

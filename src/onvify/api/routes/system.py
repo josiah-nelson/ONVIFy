@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -64,9 +65,14 @@ async def health_check(
     }
 
 
+_INFERENCE_HEALTH_TIMEOUT = 5.0
+
+
 async def _inference_health(backend: InferenceBackend) -> BackendStatus:
     try:
-        return await backend.health_check()
+        return await asyncio.wait_for(backend.health_check(), timeout=_INFERENCE_HEALTH_TIMEOUT)
+    except TimeoutError:
+        return BackendStatus(health=BackendHealth.UNAVAILABLE, message="health check timed out")
     except Exception as exc:
         return BackendStatus(health=BackendHealth.UNAVAILABLE, message=str(exc))
 

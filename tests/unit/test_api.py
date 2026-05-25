@@ -6,6 +6,7 @@ which initializes the database and all services.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
@@ -45,6 +46,12 @@ class FailingInferenceBackend:
         raise RuntimeError(msg)
 
 
+class HangingInferenceBackend:
+    async def health_check(self) -> BackendStatus:
+        await asyncio.sleep(60)
+        return BackendStatus(health=BackendHealth.HEALTHY)
+
+
 class RecordingMediaMTXManager:
     def __init__(self) -> None:
         self.reload_camera_counts: list[int] = []
@@ -52,6 +59,18 @@ class RecordingMediaMTXManager:
         self.fail_on_reload_attempts: set[int] = set()
         self.fail_next_reload = False
         self.stopped = False
+
+    @property
+    def is_configured(self) -> bool:
+        return False
+
+    @property
+    def is_running(self) -> bool:
+        return False
+
+    @property
+    def pid(self) -> int | None:
+        return None
 
     def reload_config(self, cameras: list[Camera]) -> None:
         self.reload_attempts += 1
@@ -169,6 +188,23 @@ class TestSystemEndpoints:
         assert data["status"] == "unavailable"
         assert data["inference"]["health"] == "unavailable"
         assert data["inference"]["message"] == "backend exploded"
+
+    def test_health_check_unavailable_when_inference_times_out(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from onvify.api.routes import system as system_module
+
+        monkeypatch.setattr(system_module, "_INFERENCE_HEALTH_TIMEOUT", 0.05)
+        app = cast(FastAPI, client.app)
+        app.state.inference_backend = HangingInferenceBackend()
+
+        response = client.get("/api/system/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "unavailable"
+        assert data["inference"]["health"] == "unavailable"
+        assert data["inference"]["message"] == "health check timed out"
 
     def test_version(self, client: TestClient) -> None:
         response = client.get("/api/system/version")

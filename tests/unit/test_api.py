@@ -650,6 +650,45 @@ class TestStreamStatusEndpoint:
         assert response.json() == []
 
 
+class TestDetectionConfig:
+    def test_get_detection_config(self, client: TestClient) -> None:
+        response = client.get("/api/detection/config")
+        assert response.status_code == 200
+        data = response.json()
+        assert "backend" in data
+        assert "confidence_threshold" in data
+        assert "motion_sensitivity" in data
+
+    def test_patch_detection_config(self, client: TestClient) -> None:
+        response = client.patch("/api/detection/config", json={"confidence_threshold": 75})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["confidence_threshold_pct"] == 75
+        assert data["confidence_threshold"] == 0.75
+
+    def test_patch_detection_config_multiple_fields(self, client: TestClient) -> None:
+        response = client.patch(
+            "/api/detection/config",
+            json={"motion_sensitivity": 80, "cooldown_seconds": 10.0},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["motion_sensitivity"] == 80
+        assert data["cooldown_seconds"] == 10.0
+
+    def test_patch_detection_config_validation_error(self, client: TestClient) -> None:
+        response = client.patch("/api/detection/config", json={"confidence_threshold": 200})
+        assert response.status_code == 422
+
+    def test_patch_detection_config_rejects_immutable_fields(self, client: TestClient) -> None:
+        response = client.patch("/api/detection/config", json={"backend": "openai_compatible"})
+        assert response.status_code == 422
+
+    def test_patch_detection_config_empty_body(self, client: TestClient) -> None:
+        response = client.patch("/api/detection/config", json={})
+        assert response.status_code == 400
+
+
 class TestWebSocket:
     def test_websocket_connect_disconnect(self, client: TestClient) -> None:
         with client.websocket_connect("/api/system/ws") as ws:

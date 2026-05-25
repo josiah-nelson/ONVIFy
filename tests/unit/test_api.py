@@ -153,6 +153,55 @@ def install_recording_lifecycle_services(
     return mediamtx, consumer
 
 
+class TestFrontendAssets:
+    def test_serves_built_frontend_index_and_assets(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = self._client_with_dist(tmp_path, monkeypatch)
+
+        index_response = client.get("/")
+        asset_response = client.get("/assets/app.js")
+        spa_response = client.get("/cameras/123")
+
+        assert index_response.status_code == 200
+        assert "ONVIFy UI" in index_response.text
+        assert asset_response.status_code == 200
+        assert "window.onvify" in asset_response.text
+        assert spa_response.status_code == 200
+        assert "ONVIFy UI" in spa_response.text
+
+    def test_frontend_fallback_does_not_shadow_api_routes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = self._client_with_dist(tmp_path, monkeypatch)
+
+        response = client.get("/api/not-found")
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Not Found"}
+
+    def test_frontend_routes_disabled_without_dist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = self._client(tmp_path, monkeypatch)
+
+        response = client.get("/")
+
+        assert response.status_code == 404
+
+    def _client_with_dist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+        dist = tmp_path / "frontend" / "dist"
+        assets = dist / "assets"
+        assets.mkdir(parents=True)
+        (dist / "index.html").write_text("<div>ONVIFy UI</div>", encoding="utf-8")
+        (assets / "app.js").write_text("window.onvify = true;", encoding="utf-8")
+        return self._client(tmp_path, monkeypatch)
+
+    def _client(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+        monkeypatch.setenv("ROOT_DIR", str(tmp_path))
+        from onvify.api.app import create_app
+        from onvify.api.dependencies import get_settings
+
+        get_settings.cache_clear()
+        return TestClient(create_app())
+
+
 class TestSystemEndpoints:
     def test_health_check(self, client: TestClient) -> None:
         app = cast(FastAPI, client.app)

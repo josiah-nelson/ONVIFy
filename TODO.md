@@ -29,7 +29,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 - [ ] **Live stream preview** — Display MJPEG preview streams in the browser for each camera.
 - [ ] **Detection event feed** — Real-time event display via WebSocket with filtering by camera, object class, and time range.
 - [ ] **Grid view / multi-camera layout** — Multi-camera grid composer for monitoring dashboards.
-- [ ] **Static asset serving** — Configure FastAPI to serve the built React assets so the entire app deploys as a single process.
+- [x] **Static asset serving** — Configure FastAPI to serve the built React assets so the entire app deploys as a single process.
 
 ## Authentication
 

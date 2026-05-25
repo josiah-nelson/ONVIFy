@@ -5,16 +5,20 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from onvify import __version__
 from onvify.api.dependencies import get_settings
 from onvify.api.middleware import StructlogContextMiddleware, bind_request_log_context
 from onvify.api.routes import cameras, detection, streams, system
 from onvify.api.websocket import ConnectionManager
+from onvify.config import Settings
 from onvify.inference.factory import create_inference_backend
 from onvify.infrastructure.database import Database
 from onvify.services.camera_manager import CameraManager
@@ -105,5 +109,44 @@ def create_app() -> FastAPI:
     app.include_router(streams.router, prefix="/api/streams", tags=["streams"], dependencies=log_context_dependency)
     app.include_router(detection.router, prefix="/api/detection", tags=["detection"])
     app.include_router(system.router, prefix="/api/system", tags=["system"])
+    _register_frontend_routes(app, get_settings())
 
     return app
+
+
+def _register_frontend_routes(app: FastAPI, settings: Settings) -> None:
+    dist_dir = _frontend_dist_dir(settings)
+    if dist_dir is None:
+        return
+
+    assets_dir = dist_dir / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend_assets")
+
+    index_path = dist_dir / "index.html"
+    dist_root = dist_dir.resolve()
+
+    @app.get("/", include_in_schema=False)
+    async def frontend_index() -> FileResponse:
+        return FileResponse(index_path)
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def frontend_fallback(full_path: str) -> FileResponse:
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        candidate = (dist_root / full_path).resolve()
+        try:
+            candidate.relative_to(dist_root)
+        except ValueError as err:
+            raise HTTPException(status_code=404, detail="Not Found") from err
+
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index_path)
+
+
+def _frontend_dist_dir(settings: Settings) -> Path | None:
+    dist_dir = settings.frontend_dist_dir or settings.root_dir / "frontend" / "dist"
+    index_path = dist_dir / "index.html"
+    return dist_dir if index_path.is_file() else None

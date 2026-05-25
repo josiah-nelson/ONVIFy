@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -112,5 +114,14 @@ class TestSettings:
         assert s.debug is False
         assert s.log_format == "console"
         assert s.server.web_ui_port == 5552
+        assert s.frontend_dist_dir is None
         assert s.inference.default_model == "yolov8n.pt"
         assert s.streaming.gf_encoder_preset == "ultrafast"
+
+    def test_frontend_dist_dir_env_override(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        dist_dir = tmp_path / "frontend-dist"
+        monkeypatch.setenv("FRONTEND_DIST_DIR", str(dist_dir))
+
+        s = Settings()
+
+        assert s.frontend_dist_dir == dist_dir

@@ -60,29 +60,38 @@ async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[
 @router.get("/status")
 async def stream_status(settings: SettingsDep) -> list[dict[str, Any]]:
     """Query MediaMTX API for active stream paths with status, bitrate, and reader count."""
-    api_url = f"http://localhost:{settings.server.mediamtx_api_port}/v3/paths/list"
+    host = settings.server.mediamtx_api_host
+    api_url = f"http://{host}:{settings.server.mediamtx_api_port}/v3/paths/list"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(api_url)
             response.raise_for_status()
+            data = response.json()
     except httpx.HTTPError as exc:
         logger.warning("mediamtx_api_unreachable", url=api_url, error=str(exc))
         raise HTTPException(
             status_code=502,
             detail="MediaMTX API is unreachable",
         ) from exc
+    except (ValueError, KeyError) as exc:
+        logger.warning("mediamtx_api_invalid_response", url=api_url, error=str(exc))
+        raise HTTPException(
+            status_code=502,
+            detail="MediaMTX API returned invalid response",
+        ) from exc
 
-    data = response.json()
     items: list[dict[str, Any]] = data.get("items") or []
 
     result: list[dict[str, Any]] = []
     for path in items:
+        readers = path.get("readers")
+        reader_count = len(readers) if isinstance(readers, list) else 0
         result.append(
             {
                 "name": path.get("name"),
                 "ready": path.get("ready", False),
                 "ready_time": path.get("readyTime"),
-                "readers": path.get("readers", 0),
+                "readers": reader_count,
                 "bytes_received": path.get("bytesReceived", 0),
                 "bytes_sent": path.get("bytesSent", 0),
             }

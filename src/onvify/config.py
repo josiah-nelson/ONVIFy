@@ -29,6 +29,7 @@ class ServerSettings(BaseSettings):
 
     web_ui_port: Port = 5552
     mediamtx_port: Port = 8554
+    mediamtx_api_host: str = "127.0.0.1"
     mediamtx_api_port: Port = 9997
     onvif_base_port: Port = 8001
     wsgi_max_workers: int = Field(20, ge=1)

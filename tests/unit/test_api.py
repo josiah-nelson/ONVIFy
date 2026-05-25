@@ -136,13 +136,39 @@ def install_recording_lifecycle_services(
 
 class TestSystemEndpoints:
     def test_health_check(self, client: TestClient) -> None:
+        app = cast(FastAPI, client.app)
+        app.state.inference_backend = FakeInferenceBackend(
+            BackendStatus(health=BackendHealth.HEALTHY, model_name="fake-model", device="test")
+        )
+
         response = client.get("/api/system/health")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
         assert "version" in data
         assert "cameras_total" in data
+        assert "stream_consumers_active" in data
         assert "ai_consumers_active" in data
+        assert data["database"] == {"connected": True}
+        assert data["mediamtx"] == {"configured": False, "running": False, "pid": None}
+        assert data["inference"] == {
+            "health": "healthy",
+            "model_name": "fake-model",
+            "device": "test",
+            "message": None,
+        }
+
+    def test_health_check_unavailable_when_inference_fails(self, client: TestClient) -> None:
+        app = cast(FastAPI, client.app)
+        app.state.inference_backend = FailingInferenceBackend()
+
+        response = client.get("/api/system/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "unavailable"
+        assert data["inference"]["health"] == "unavailable"
+        assert data["inference"]["message"] == "backend exploded"
 
     def test_version(self, client: TestClient) -> None:
         response = client.get("/api/system/version")

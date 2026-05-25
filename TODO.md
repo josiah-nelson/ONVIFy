@@ -63,5 +63,5 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 ## Observability
 
 - [x] **Structured log context** — Bind `camera_id` and `stream_id` to structlog context in request handlers and background tasks.
-- [ ] **Health endpoint enrichment** — Include MediaMTX status, inference backend health, database connectivity, and active camera count in `GET /api/system/health`.
+- [x] **Health endpoint enrichment** — Include MediaMTX status, inference backend health, database connectivity, and active camera count in `GET /api/system/health`.
 - [ ] **Diagnostics endpoint** — System info, uptime, resource usage, and per-camera stream statistics.

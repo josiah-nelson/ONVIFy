@@ -74,6 +74,15 @@ class Database:
             raise RuntimeError(msg)
         return self._conn
 
+    async def health_check(self) -> bool:
+        """Return whether the SQLite connection can execute a trivial query."""
+        try:
+            async with self.connection.execute("SELECT 1") as cursor:
+                row = await cursor.fetchone()
+        except Exception:
+            return False
+        return row == (1,)
+
     # ── Camera persistence ──────────────────────────
 
     async def list_cameras(self) -> list[Camera]:

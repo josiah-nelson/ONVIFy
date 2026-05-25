@@ -53,6 +53,16 @@ class MediaMTXManager:
     def is_running(self) -> bool:
         return self._process is not None and self._process.poll() is None
 
+    @property
+    def is_configured(self) -> bool:
+        return self._bin is not None
+
+    @property
+    def pid(self) -> int | None:
+        if not self.is_running or self._process is None:
+            return None
+        return self._process.pid
+
     def write_config(self, cameras: list[Camera]) -> Path:
         config = _build_mediamtx_config(cameras, self._settings)
         self._config_path.write_text(yaml.dump(config, default_flow_style=False))

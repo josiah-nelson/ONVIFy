@@ -126,6 +126,7 @@ def _register_frontend_routes(app: FastAPI, settings: Settings) -> None:
         app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend_assets")
 
     index_path = dist_dir / "index.html"
+    index_path_resolved = index_path.resolve()
     dist_root = dist_dir.resolve()
 
     @app.get("/", include_in_schema=False)
@@ -143,6 +144,8 @@ def _register_frontend_routes(app: FastAPI, settings: Settings) -> None:
         except ValueError as err:
             raise HTTPException(status_code=404, detail="Not Found") from err
 
+        if candidate == index_path_resolved:
+            return _frontend_index_response(index_path)
         if candidate.is_file():
             return FileResponse(candidate, headers=_INDEX_CACHE_HEADERS)
         return _frontend_index_response(index_path)

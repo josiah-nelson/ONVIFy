@@ -66,18 +66,31 @@ function statusClass(status: string): string {
   return "bg-rose-100 text-rose-800";
 }
 
+function rejectionMessage(result: PromiseRejectedResult): string {
+  return result.reason instanceof Error ? result.reason.message : "Request failed";
+}
+
 export default function App(): ReactElement {
   const [state, setState] = useState<DashboardState>(initialState);
 
   const refresh = useCallback(async (): Promise<void> => {
     setState((current) => ({ ...current, loading: true, error: null }));
     try {
-      const [health, cameras, events] = await Promise.all([
+      const [healthResult, camerasResult, eventsResult] = await Promise.allSettled([
         loadJson<Health>("/api/system/health"),
         loadJson<CameraRow[]>("/api/cameras/"),
         loadJson<DetectionEvent[]>("/api/detection/events?limit=5")
       ]);
-      setState({ health, cameras, events, error: null, loading: false });
+      const failed = [healthResult, camerasResult, eventsResult].filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+      setState((current) => ({
+        health: healthResult.status === "fulfilled" ? healthResult.value : current.health,
+        cameras: camerasResult.status === "fulfilled" ? camerasResult.value : current.cameras,
+        events: eventsResult.status === "fulfilled" ? eventsResult.value : current.events,
+        error: failed.length > 0 ? failed.map(rejectionMessage).join(" | ") : null,
+        loading: false
+      }));
     } catch (error) {
       setState((current) => ({
         ...current,

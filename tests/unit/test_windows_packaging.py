@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -64,3 +65,24 @@ def test_wix_project_registers_onvify_as_windows_service() -> None:
     assert service_stop.attrib["Stop"] == "both"
     assert service_stop.attrib["Remove"] == "uninstall"
     assert service_stop.attrib["Wait"] == "yes"
+
+
+def test_windows_pyinstaller_bundle_script_targets_onvify_cli() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    script = (project_root / "packaging/windows/build-exe.ps1").read_text()
+
+    assert '-m", "PyInstaller' in script
+    assert '"--onefile"' in script
+    assert '"--name", "onvify"' in script
+    assert '"--distpath", $DistPath' in script
+    assert '"--collect-all", "onvify"' in script
+    assert '"src\\onvify\\cli.py"' in script
+    assert '"onvify.exe"' in script
+
+
+def test_pyinstaller_is_declared_as_packaging_dependency() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    pyproject = tomllib.loads((project_root / "pyproject.toml").read_text())
+
+    packaging_deps = pyproject["project"]["optional-dependencies"]["packaging"]
+    assert any(dep.startswith("pyinstaller>=") for dep in packaging_deps)

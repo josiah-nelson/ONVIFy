@@ -5,13 +5,13 @@ WiX Toolset v6/v7 MSI installer that registers ONVIFy as a native Windows Servic
 ## Prerequisites
 
 - WiX Toolset v6 or v7 (`dotnet tool install --global wix`)
-- PyInstaller (to bundle Python app into standalone exe)
+- PyInstaller (`pip install -e ".[packaging]"`)
 
 ## Build
 
 ```powershell
 # Bundle the Python app
-pyinstaller --onefile --name onvify src/onvify/cli.py
+.\packaging\windows\build-exe.ps1 -Clean
 
 # Build the MSI
 wix build packaging/windows/onvify.wxs -d ProductVersion=0.1.0 -o ONVIFy.msi

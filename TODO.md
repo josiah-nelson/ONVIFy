@@ -51,7 +51,8 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 - [x] **Self-hosted CI Python setup** — Fix macOS/Windows self-hosted runner Python toolcache permissions so E2E jobs get past `actions/setup-python`.
 - [x] **WiX MSI project** — Create the WiX v6/v7 `.wxs` file in `packaging/windows/` with ServiceInstall/ServiceControl elements for native Windows Service registration.
 - [ ] **Windows service data directory ACL** — Move runtime data to a ProgramData-backed directory and grant the Windows service account write access during MSI install.
-- [ ] **PyInstaller bundling** — Script to bundle the Python app into a standalone executable for Windows MSI packaging.
+- [x] **PyInstaller bundling** — Script to bundle the Python app into a standalone executable for Windows MSI packaging.
+- [ ] **Windows service control entrypoint** — Add a Windows Service-compatible executable entry point so SCM can start and stop ONVIFy cleanly.
 - [ ] **MSI lifecycle test script** — Automated install/verify/uninstall test (similar to BANS `test-msi-lifecycle.ps1`).
 - [x] **Dockerfile** — Multi-stage Dockerfile for containerized deployment.
 - [x] **docker-compose.yml** — Compose file bundling ONVIFy + MediaMTX.

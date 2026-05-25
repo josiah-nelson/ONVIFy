@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?define ProductVersion = "0.1.0" ?>
+<?define SourceDir = "dist" ?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="ONVIFy"
+    Manufacturer="ONVIFy"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="8F6B8C9F-2732-4F44-AFD0-AAD70F14D5E2"
+    Scope="perMachine"
+  >
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ONVIFy is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="SERVICEACCOUNT" Value="LocalSystem" Secure="yes" />
+    <Property Id="SERVICEPASSWORD" Hidden="yes" Secure="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="ONVIFy" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="ONVIFy" Level="1">
+      <ComponentGroupRef Id="ONVIFyServiceComponents" />
+    </Feature>
+
+    <ComponentGroup Id="ONVIFyServiceComponents" Directory="INSTALLFOLDER">
+      <Component Id="ONVIFyServiceExecutable" Guid="70D6D30C-6CC7-45DF-9875-CFA2A3F94F7D">
+        <File Id="ONVIFyExe" Source="$(var.SourceDir)\onvify.exe" KeyPath="yes" />
+        <ServiceInstall
+          Id="ONVIFyServiceInstall"
+          Type="ownProcess"
+          Name="ONVIFy"
+          DisplayName="ONVIFy"
+          Description="Enterprise ONVIF/RTSP virtual camera server"
+          Start="auto"
+          Account="[SERVICEACCOUNT]"
+          Password="[SERVICEPASSWORD]"
+          ErrorControl="normal"
+          Vital="yes"
+        />
+        <ServiceControl
+          Id="ONVIFyServiceControl"
+          Name="ONVIFy"
+          Start="install"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes"
+        />
+      </Component>
+    </ComponentGroup>
+  </Package>
+</Wix>

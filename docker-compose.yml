@@ -4,9 +4,8 @@ services:
     ports:
       - "5552:5552"   # Web UI / REST API
       - "8554:8554"   # RTSP (MediaMTX)
-      - "9997:9997"   # MediaMTX API
     volumes:
-      - onvify-data:/data
+      - onvify-data:/app/data
     environment:
       - AI_BACKEND=local
       - LOG_FORMAT=json

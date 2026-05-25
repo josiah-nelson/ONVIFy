@@ -29,16 +29,16 @@ COPY --from=builder /build/dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl "onvify[inference]" \
     && rm -f /tmp/*.whl
 
-RUN mkdir -p /data && chown onvify:onvify /data
-VOLUME /data
+RUN mkdir -p /app/data && chown onvify:onvify /app/data
+VOLUME /app/data
 
 USER onvify
 
-ENV ROOT_DIR=/data \
+ENV ROOT_DIR=/app \
     MEDIAMTX_AUTO_DOWNLOAD=true \
     LOG_FORMAT=json
 
-EXPOSE 5552 8554 9997
+EXPOSE 5552 8554
 
 ENTRYPOINT ["onvify"]
 CMD ["--host", "0.0.0.0"]

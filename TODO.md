@@ -48,7 +48,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 
 ## Packaging and Deployment
 
-- [ ] **Self-hosted CI Python setup** — Fix macOS/Windows self-hosted runner Python toolcache permissions so E2E jobs get past `actions/setup-python`.
+- [x] **Self-hosted CI Python setup** — Fix macOS/Windows self-hosted runner Python toolcache permissions so E2E jobs get past `actions/setup-python`.
 - [ ] **WiX MSI project** — Create the WiX v6/v7 `.wxs` file in `packaging/windows/` with ServiceInstall/ServiceControl elements for native Windows Service registration.
 - [ ] **PyInstaller bundling** — Script to bundle the Python app into a standalone executable for Windows MSI packaging.
 - [ ] **MSI lifecycle test script** — Automated install/verify/uninstall test (similar to BANS `test-msi-lifecycle.ps1`).

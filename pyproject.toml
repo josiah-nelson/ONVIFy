@@ -29,6 +29,7 @@ dependencies = [
     "httpx>=0.28",
     "pyyaml>=6.0",
     "websockets>=14.0",
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "types-PyYAML>=6.0",
+    "types-defusedxml>=0.7",
     "pre-commit>=4.0",
 ]
 

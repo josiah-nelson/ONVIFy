@@ -35,7 +35,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 
 - [ ] **API authentication** — Implement session-based or token-based auth for the REST API and WebSocket.
 - [ ] **Auth route handlers** — Flesh out `api/routes/auth.py` with login, logout, and session management.
-- [ ] **ONVIF credentials** — Per-camera ONVIF username/password for the virtual device SOAP endpoints.
+- [x] **ONVIF credentials** — Per-camera ONVIF username/password for the virtual device SOAP endpoints.
 - [ ] **RTSP auth passthrough** — Optional global RTSP authentication on MediaMTX streams.
 
 ## Inference

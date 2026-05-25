@@ -342,6 +342,17 @@ class TestCameraEndpoints:
         assert data["name"] == "Test Cam"
         assert data["status"] == "offline"
 
+    def test_create_camera_rejects_onvif_password_without_username(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/cameras/",
+            json={
+                "name": "Secure Cam",
+                "source_url": "rtsp://192.168.1.100:554/stream1",
+                "onvif_password": "secret",
+            },
+        )
+        assert response.status_code == 422
+
     def test_create_mjpeg_camera(self, client: TestClient) -> None:
         install_recording_lifecycle_services(client)
         response = client.post(

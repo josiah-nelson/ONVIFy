@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated
+from typing import Annotated, Self
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from onvify.api.dependencies import get_camera_manager, get_mediamtx_manager, get_stream_consumer, get_ws_manager
 from onvify.api.websocket import ConnectionManager
@@ -35,6 +35,13 @@ class CreateCameraRequest(BaseModel):
     ai_model: str | None = None
     onvif_username: str | None = None
     onvif_password: str | None = None
+
+    @model_validator(mode="after")
+    def validate_onvif_credentials(self) -> Self:
+        if self.onvif_password is not None and self.onvif_username is None:
+            msg = "onvif_username is required when onvif_password is set"
+            raise ValueError(msg)
+        return self
 
 
 class UpdateCameraRequest(BaseModel):

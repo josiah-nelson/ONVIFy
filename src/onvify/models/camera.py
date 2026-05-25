@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class StreamType(StrEnum):
@@ -62,6 +62,13 @@ class Camera(BaseModel):
     # ONVIF credentials for the virtual device
     onvif_username: str | None = None
     onvif_password: str | None = None
+
+    @model_validator(mode="after")
+    def validate_onvif_credentials(self) -> Self:
+        if self.onvif_password is not None and self.onvif_username is None:
+            msg = "onvif_username is required when onvif_password is set"
+            raise ValueError(msg)
+        return self
 
     @property
     def primary_stream(self) -> Stream | None:

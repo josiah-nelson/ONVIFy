@@ -125,7 +125,7 @@ class OpenAICompatibleBackend:
         if not choices:
             logger.warning("openai_empty_choices", model=self._model)
             return []
-        content = choices[0].get("message", {}).get("content", "[]")
+        content = choices[0].get("message", {}).get("content") or "[]"
 
         all_detections = _parse_detections(content)
         return [d for d in all_detections if d.confidence >= confidence_threshold]

@@ -264,6 +264,22 @@ class TestDetect:
 
         assert result == []
 
+    async def test_null_content_returns_empty(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = {"choices": [{"message": {"role": "assistant", "content": None}}]}
+            return httpx.Response(200, json=body)
+
+        backend = OpenAICompatibleBackend(base_url="http://mock-server/v1")
+        backend._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            headers=dict(backend._client.headers),
+        )
+
+        with patch("onvify.inference.openai_compatible._frame_to_data_uri", return_value=FAKE_DATA_URI):
+            result = await backend.detect(FAKE_FRAME)
+
+        assert result == []
+
 
 class TestHealthCheck:
     def _make_backend(self, *, status_code: int = 200, raise_error: Exception | None = None) -> OpenAICompatibleBackend:

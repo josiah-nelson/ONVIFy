@@ -198,7 +198,11 @@ jobs:
           echo "version=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
-        run: pip install -e ".[dev,inference]"
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install -e ".[dev,inference]"
+          Join-Path $PWD ".venv\Scripts" | Out-File -Append $env:GITHUB_PATH
 
       - name: Build MSI installer
         shell: pwsh

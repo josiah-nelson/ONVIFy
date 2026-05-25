@@ -12,7 +12,7 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of ONVIFy is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
-    <Property Id="SERVICEACCOUNT" Value="LocalSystem" Secure="yes" />
+    <Property Id="SERVICEACCOUNT" Value="NT AUTHORITY\NetworkService" Secure="yes" />
     <Property Id="SERVICEPASSWORD" Hidden="yes" Secure="yes" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -37,7 +37,20 @@
           Password="[SERVICEPASSWORD]"
           ErrorControl="normal"
           Vital="yes"
-        />
+        >
+          <ServiceDependency Id="Tcpip" />
+          <ServiceDependency Id="Afd" />
+          <ServiceConfigFailureActions
+            Id="ONVIFyServiceFailureActions"
+            OnInstall="yes"
+            OnReinstall="yes"
+            ResetPeriod="86400"
+          >
+            <Failure Action="restartService" Delay="5000" />
+            <Failure Action="restartService" Delay="5000" />
+            <Failure Action="restartService" Delay="5000" />
+          </ServiceConfigFailureActions>
+        </ServiceInstall>
         <ServiceControl
           Id="ONVIFyServiceControl"
           Name="ONVIFy"

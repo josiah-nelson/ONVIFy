@@ -10,6 +10,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from onvify import __version__
 from onvify.api.dependencies import (
@@ -43,14 +44,36 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 _START_TIME = time.monotonic()
 
 
-@router.get("/health")
+class DatabaseHealth(BaseModel):
+    connected: bool
+
+
+class MediaMTXHealth(BaseModel):
+    configured: bool
+    running: bool
+    pid: int | None
+
+
+class SystemHealth(BaseModel):
+    status: str
+    version: str
+    cameras_total: int
+    cameras_online: int
+    stream_consumers_active: int
+    ai_consumers_active: int
+    database: DatabaseHealth
+    mediamtx: MediaMTXHealth
+    inference: BackendStatus
+
+
+@router.get("/health", response_model=SystemHealth)
 async def health_check(
     db: DatabaseDep,
     manager: ManagerDep,
     mediamtx: MediaMTXDep,
     consumer: ConsumerDep,
     backend: InferenceBackendDep,
-) -> dict[str, object]:
+) -> SystemHealth:
     cameras = manager.list_cameras()
     database_connected = await db.health_check()
     inference = await _inference_health(backend)
@@ -61,17 +84,17 @@ async def health_check(
         mediamtx_configured=mediamtx.is_configured,
         mediamtx_running=mediamtx.is_running,
     )
-    return {
-        "status": status,
-        "version": __version__,
-        "cameras_total": len(cameras),
-        "cameras_online": sum(1 for c in cameras if c.status == CameraStatus.ONLINE),
-        "stream_consumers_active": len(consumer.active_cameras),
-        "ai_consumers_active": len(consumer.active_ai_cameras),
-        "database": {"connected": database_connected},
-        "mediamtx": mediamtx_status,
-        "inference": inference.model_dump(mode="json"),
-    }
+    return SystemHealth(
+        status=status,
+        version=__version__,
+        cameras_total=len(cameras),
+        cameras_online=sum(1 for c in cameras if c.status == CameraStatus.ONLINE),
+        stream_consumers_active=len(consumer.active_cameras),
+        ai_consumers_active=len(consumer.active_ai_cameras),
+        database=DatabaseHealth(connected=database_connected),
+        mediamtx=mediamtx_status,
+        inference=inference,
+    )
 
 
 _INFERENCE_HEALTH_TIMEOUT = 5.0
@@ -86,12 +109,12 @@ async def _inference_health(backend: InferenceBackend) -> BackendStatus:
         return BackendStatus(health=BackendHealth.UNAVAILABLE, message=str(exc))
 
 
-def _mediamtx_status(mediamtx: MediaMTXManager) -> dict[str, object]:
-    return {
-        "configured": mediamtx.is_configured,
-        "running": mediamtx.is_running,
-        "pid": mediamtx.pid,
-    }
+def _mediamtx_status(mediamtx: MediaMTXManager) -> MediaMTXHealth:
+    return MediaMTXHealth(
+        configured=mediamtx.is_configured,
+        running=mediamtx.is_running,
+        pid=mediamtx.pid,
+    )
 
 
 def _overall_status(

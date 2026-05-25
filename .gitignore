@@ -58,6 +58,7 @@ htmlcov/
 # Node/Frontend
 node_modules/
 frontend/dist/
+frontend/src/api/generated/
 
 # Packaging artifacts
 packaging/windows/*.msi

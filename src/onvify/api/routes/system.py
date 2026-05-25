@@ -116,7 +116,7 @@ async def diagnostics(
 ) -> dict[str, object]:
     cameras = manager.list_cameras()
     active = consumer.active_cameras
-    active_ai = active & consumer.active_ai_cameras
+    active_ai = consumer.active_ai_cameras
 
     camera_details: list[dict[str, object]] = []
     for cam in cameras:
@@ -125,7 +125,7 @@ async def diagnostics(
                 "id": str(cam.id),
                 "name": cam.name,
                 "status": cam.status.value,
-                "stream_type": cam.stream_type if isinstance(cam.stream_type, str) else cam.stream_type.value,
+                "stream_type": str(cam.stream_type),
                 "ai_enabled": cam.ai_enabled,
                 "consuming": cam.id in active,
                 "ai_active": cam.id in active_ai,

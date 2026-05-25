@@ -224,10 +224,11 @@ class TestSystemEndpoints:
         assert "backend" in data["inference"]
 
     def test_diagnostics_with_camera(self, client: TestClient) -> None:
-        client.post(
+        create_resp = client.post(
             "/api/cameras/",
             json={"name": "Diag Cam", "source_url": "rtsp://x", "ai_enabled": True},
         )
+        assert create_resp.status_code == 201
         response = client.get("/api/system/diagnostics")
         assert response.status_code == 200
         data = response.json()

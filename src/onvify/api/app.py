@@ -28,6 +28,8 @@ from onvify.services.streaming import MediaMTXManager
 
 logger = structlog.get_logger()
 
+_INDEX_CACHE_HEADERS = {"Cache-Control": "no-cache, must-revalidate"}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -128,7 +130,7 @@ def _register_frontend_routes(app: FastAPI, settings: Settings) -> None:
 
     @app.get("/", include_in_schema=False)
     async def frontend_index() -> FileResponse:
-        return FileResponse(index_path)
+        return _frontend_index_response(index_path)
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def frontend_fallback(full_path: str) -> FileResponse:
@@ -143,10 +145,14 @@ def _register_frontend_routes(app: FastAPI, settings: Settings) -> None:
 
         if candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(index_path)
+        return _frontend_index_response(index_path)
 
 
 def _frontend_dist_dir(settings: Settings) -> Path | None:
     dist_dir = settings.frontend_dist_dir or settings.root_dir / "frontend" / "dist"
     index_path = dist_dir / "index.html"
     return dist_dir if index_path.is_file() else None
+
+
+def _frontend_index_response(index_path: Path) -> FileResponse:
+    return FileResponse(index_path, headers=_INDEX_CACHE_HEADERS)

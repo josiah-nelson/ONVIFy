@@ -163,10 +163,12 @@ class TestFrontendAssets:
 
         assert index_response.status_code == 200
         assert "ONVIFy UI" in index_response.text
+        assert index_response.headers["cache-control"] == "no-cache, must-revalidate"
         assert asset_response.status_code == 200
         assert "window.onvify" in asset_response.text
         assert spa_response.status_code == 200
         assert "ONVIFy UI" in spa_response.text
+        assert spa_response.headers["cache-control"] == "no-cache, must-revalidate"
 
     def test_frontend_fallback_does_not_shadow_api_routes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -177,6 +179,14 @@ class TestFrontendAssets:
 
         assert response.status_code == 404
         assert response.json() == {"detail": "Not Found"}
+
+    def test_frontend_fallback_rejects_path_traversal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / "secret.txt").write_text("outside dist", encoding="utf-8")
+        client = self._client_with_dist(tmp_path, monkeypatch)
+
+        response = client.get("/%2E%2E/secret.txt")
+
+        assert response.status_code == 404
 
     def test_frontend_routes_disabled_without_dist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         client = self._client(tmp_path, monkeypatch)

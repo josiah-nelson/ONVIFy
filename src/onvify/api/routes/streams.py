@@ -59,7 +59,7 @@ async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[
 
 @router.get("/status")
 async def stream_status(settings: SettingsDep) -> list[dict[str, Any]]:
-    """Query MediaMTX API for active stream paths with status, bitrate, and reader count."""
+    """Query MediaMTX API for active stream paths with reader count and byte counters."""
     host = settings.server.mediamtx_api_host
     api_url = f"http://{host}:{settings.server.mediamtx_api_port}/v3/paths/list"
     try:
@@ -67,11 +67,17 @@ async def stream_status(settings: SettingsDep) -> list[dict[str, Any]]:
             response = await client.get(api_url)
             response.raise_for_status()
             data = response.json()
-    except httpx.HTTPError as exc:
+    except httpx.RequestError as exc:
         logger.warning("mediamtx_api_unreachable", url=api_url, error=str(exc))
         raise HTTPException(
             status_code=502,
             detail="MediaMTX API is unreachable",
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        logger.warning("mediamtx_api_error", url=api_url, status=exc.response.status_code)
+        raise HTTPException(
+            status_code=502,
+            detail=f"MediaMTX API returned {exc.response.status_code}",
         ) from exc
     except (ValueError, KeyError) as exc:
         logger.warning("mediamtx_api_invalid_response", url=api_url, error=str(exc))

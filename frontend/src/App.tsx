@@ -2,33 +2,12 @@ import { Activity, Camera, CircleAlert, RefreshCw, Server } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { api, type GetResponse } from "@/api/client";
 import { Button } from "@/components/ui/button";
 
-type Health = {
-  status: string;
-  version: string;
-  cameras_total: number;
-  cameras_online: number;
-  stream_consumers_active: number;
-  inference: { health: string; message?: string | null };
-  mediamtx: { running: boolean; configured: boolean };
-};
-
-type CameraRow = {
-  id: string;
-  name: string;
-  source_streams: Array<{ stream_type?: string }>;
-  status: string;
-  ai_enabled: boolean;
-};
-
-type DetectionEvent = {
-  id: string;
-  camera_id: string;
-  timestamp: string;
-  backend: string;
-  detections: Array<{ object_class: string; confidence: number }>;
-};
+type Health = GetResponse<"/api/system/health">;
+type CameraRow = GetResponse<"/api/cameras/">[number];
+type DetectionEvent = GetResponse<"/api/detection/events">[number];
 
 type DashboardState = {
   health: Health | null;
@@ -48,12 +27,25 @@ const initialState: DashboardState = {
 
 const REFRESH_INTERVAL_MS = 30_000;
 
-async function loadJson<T>(path: string): Promise<T> {
-  const response = await fetch(path);
-  if (!response.ok) {
-    throw new Error(`${path} returned ${response.status}`);
+async function readApiResponse<T>(
+  request: Promise<{ data?: T; error?: unknown; response: Response }>,
+  path: string
+): Promise<T> {
+  const { data, error, response } = await request;
+  if (data !== undefined) {
+    return data;
   }
-  return response.json() as Promise<T>;
+  throw new Error(`${path} returned ${response.status}: ${apiErrorMessage(error)}`);
+}
+
+function apiErrorMessage(error: unknown): string {
+  if (typeof error === "object" && error !== null && "detail" in error) {
+    const detail = (error as { detail?: unknown }).detail;
+    if (typeof detail === "string") {
+      return detail;
+    }
+  }
+  return "Request failed";
 }
 
 function statusClass(status: string): string {
@@ -86,9 +78,12 @@ export default function App(): ReactElement {
     setState((current) => ({ ...current, loading: true, error: null }));
     try {
       const [healthResult, camerasResult, eventsResult] = await Promise.allSettled([
-        loadJson<Health>("/api/system/health"),
-        loadJson<CameraRow[]>("/api/cameras/"),
-        loadJson<DetectionEvent[]>("/api/detection/events?limit=5")
+        readApiResponse(api.GET("/api/system/health"), "/api/system/health"),
+        readApiResponse(api.GET("/api/cameras/"), "/api/cameras/"),
+        readApiResponse(
+          api.GET("/api/detection/events", { params: { query: { limit: 5 } } }),
+          "/api/detection/events"
+        )
       ]);
       const failed = [healthResult, camerasResult, eventsResult].filter(
         (result): result is PromiseRejectedResult => result.status === "rejected"
@@ -98,12 +93,6 @@ export default function App(): ReactElement {
         cameras: camerasResult.status === "fulfilled" ? camerasResult.value : current.cameras,
         events: eventsResult.status === "fulfilled" ? eventsResult.value : current.events,
         error: failed.length > 0 ? failed.map(rejectionMessage).join(" | ") : null,
-        loading: false
-      }));
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        error: error instanceof Error ? error.message : "Unable to load dashboard data",
         loading: false
       }));
     } finally {
@@ -197,11 +186,12 @@ export default function App(): ReactElement {
               {state.events.length > 0 ? (
                 state.events.map((event) => {
                   const first = event.detections[0];
+                  const eventTime = event.timestamp ? new Date(event.timestamp).toLocaleString() : "Unknown time";
                   return (
-                    <div key={event.id} className="px-4 py-3 text-sm">
+                    <div key={event.id ?? `${event.camera_id}-${event.timestamp ?? "pending"}`} className="px-4 py-3 text-sm">
                       <div className="font-medium">{first?.object_class ?? "unknown"}</div>
                       <div className="text-muted-foreground">
-                        {new Date(event.timestamp).toLocaleString()} · {event.backend}
+                        {eventTime} · {event.backend}
                       </div>
                     </div>
                   );

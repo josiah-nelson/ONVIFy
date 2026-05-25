@@ -206,6 +206,15 @@ class TestSystemEndpoints:
         assert data["inference"]["health"] == "unavailable"
         assert data["inference"]["message"] == "health check timed out"
 
+    def test_health_openapi_schema_is_typed(self, client: TestClient) -> None:
+        app = cast(FastAPI, client.app)
+        schema = app.openapi()
+
+        response_schema = schema["paths"]["/api/system/health"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]
+        assert response_schema == {"$ref": "#/components/schemas/SystemHealth"}
+
     def test_version(self, client: TestClient) -> None:
         response = client.get("/api/system/version")
         assert response.status_code == 200

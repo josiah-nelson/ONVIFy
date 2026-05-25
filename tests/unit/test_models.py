@@ -34,6 +34,10 @@ class TestCameraModel:
         assert rtsp.stream_type == StreamType.RTSP
         assert mjpeg.stream_type == StreamType.MJPEG
 
+    def test_onvif_password_requires_username(self) -> None:
+        with pytest.raises(ValidationError, match="onvif_username is required"):
+            Camera(name="Secure", source_streams=[Stream(url="rtsp://x")], onvif_password="secret")
+
 
 class TestDetectionModels:
     def test_bounding_box_validation(self) -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import hashlib
 import hmac
 import re
@@ -16,6 +17,8 @@ from typing import TYPE_CHECKING
 from xml.etree import ElementTree
 
 import structlog
+from defusedxml import ElementTree as DefusedElementTree
+from defusedxml.common import DefusedXmlException
 
 from onvify.models.onvif import ONVIFDeviceInfo
 from onvify.onvif_xml import (
@@ -43,6 +46,7 @@ _PROFILE_TOKEN_PATTERN = re.compile(
 _PASSWORD_DIGEST_TYPE = "PasswordDigest"
 _PASSWORD_TEXT_TYPE = "PasswordText"
 _USERNAME_TOKEN_MAX_AGE = timedelta(minutes=5)
+_USERNAME_TOKEN_MAX_NONCES = 4096
 
 
 def _extract_action(body: str) -> str | None:
@@ -66,14 +70,27 @@ def _child_text(element: ElementTree.Element, name: str) -> str | None:
     return None
 
 
+def _child_element(element: ElementTree.Element, name: str) -> ElementTree.Element | None:
+    for child in element:
+        if _local_name(child.tag) == name:
+            return child
+    return None
+
+
 def _username_token(body: str) -> ElementTree.Element | None:
     try:
-        root = ElementTree.fromstring(body)
-    except ElementTree.ParseError:
+        root = DefusedElementTree.fromstring(body)
+    except (DefusedXmlException, ElementTree.ParseError):
         return None
-    for element in root.iter():
-        if _local_name(element.tag) == "UsernameToken":
-            return element
+    header = _child_element(root, "Header")
+    if header is None:
+        return None
+    for security in header:
+        if _local_name(security.tag) != "Security":
+            continue
+        token = _child_element(security, "UsernameToken")
+        if token is not None:
+            return token
     return None
 
 
@@ -90,14 +107,17 @@ def _password_type(token: ElementTree.Element) -> str:
 def _decode_nonce(nonce: str) -> bytes:
     try:
         return base64.b64decode(nonce, validate=True)
-    except ValueError:
-        return nonce.encode("utf-8")
+    except (binascii.Error, ValueError):
+        return b""
 
 
 def _password_digest(nonce: str, created: str, password: str) -> str:
     # WS-Security UsernameToken defines PasswordDigest as SHA-1 over nonce, Created, and password.
+    decoded_nonce = _decode_nonce(nonce)
+    if not decoded_nonce:
+        return ""
     digest = hashlib.sha1()
-    digest.update(_decode_nonce(nonce))
+    digest.update(decoded_nonce)
     digest.update(created.encode("utf-8"))
     digest.update(password.encode("utf-8"))
     return base64.b64encode(digest.digest()).decode("ascii")
@@ -124,6 +144,16 @@ def _prune_seen_nonces(seen_nonces: dict[str, datetime], now: datetime) -> None:
             del seen_nonces[nonce]
 
 
+def _remember_nonce(seen_nonces: dict[str, datetime], nonce: str, created_at: datetime) -> bool:
+    if nonce in seen_nonces:
+        return False
+    if len(seen_nonces) >= _USERNAME_TOKEN_MAX_NONCES:
+        logger.warning("onvif_username_token_nonce_cache_full", max_nonces=_USERNAME_TOKEN_MAX_NONCES)
+        return False
+    seen_nonces[nonce] = created_at
+    return True
+
+
 def _valid_username_token(
     body: str,
     username: str,
@@ -146,6 +176,8 @@ def _valid_username_token(
     created = _child_text(token, "Created")
     if not nonce or not created:
         return False
+    if not _decode_nonce(nonce):
+        return False
     created_at = _parse_created(created)
     now = datetime.now(UTC)
     if created_at is None or not _created_is_fresh(created_at, now):
@@ -154,10 +186,7 @@ def _valid_username_token(
         return False
 
     _prune_seen_nonces(seen_nonces, now)
-    if nonce in seen_nonces:
-        return False
-    seen_nonces[nonce] = created_at
-    return True
+    return _remember_nonce(seen_nonces, nonce, created_at)
 
 
 class ONVIFCameraServer:
@@ -257,6 +286,11 @@ class ONVIFCameraServer:
         if username is None and password is None:
             return True
         if username is None:
+            logger.warning(
+                "onvif_auth_misconfigured",
+                camera_id=str(self._camera.id),
+                reason="onvif_password set without onvif_username",
+            )
             return False
         return _valid_username_token(body, username, password or "", self._seen_username_token_nonces)
 

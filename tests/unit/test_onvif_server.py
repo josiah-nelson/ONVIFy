@@ -9,7 +9,13 @@ from datetime import UTC, datetime
 import pytest
 
 from onvify.models.camera import Camera, Profile, Stream
-from onvify.services.onvif_server import ONVIFCameraServer, ONVIFServerManager, _extract_action, _password_digest
+from onvify.services.onvif_server import (
+    _USERNAME_TOKEN_MAX_NONCES,
+    ONVIFCameraServer,
+    ONVIFServerManager,
+    _extract_action,
+    _password_digest,
+)
 
 
 class TestExtractAction:
@@ -186,6 +192,94 @@ class TestONVIFCameraServer:
         finally:
             await server.stop()
 
+    async def test_rejects_username_token_outside_soap_header(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+
+        try:
+            response = await _send_soap_request(
+                "127.0.0.1",
+                actual_port,
+                _soap_request_with_body_username_token(),
+            )
+            assert b"HTTP/1.1 401 Unauthorized" in response
+        finally:
+            await server.stop()
+
+    async def test_rejects_entity_expansion_in_username_token(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+
+        try:
+            response = await _send_soap_request("127.0.0.1", actual_port, _soap_request_with_entity_token())
+            assert b"HTTP/1.1 401 Unauthorized" in response
+        finally:
+            await server.stop()
+
+    async def test_rejects_invalid_base64_nonce(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+
+        try:
+            response = await _send_soap_request(
+                "127.0.0.1",
+                actual_port,
+                _soap_request(_password_digest_token("operator", "secret", nonce="not-base64?")),
+            )
+            assert b"HTTP/1.1 401 Unauthorized" in response
+        finally:
+            await server.stop()
+
+    async def test_rejects_password_digest_when_nonce_cache_is_full(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        now = datetime.now(UTC)
+        server._seen_username_token_nonces.update(
+            {
+                base64.b64encode(f"nonce-{index}".encode()).decode("ascii"): now
+                for index in range(_USERNAME_TOKEN_MAX_NONCES)
+            }
+        )
+        new_nonce = base64.b64encode(b"new").decode("ascii")
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+
+        try:
+            response = await _send_soap_request(
+                "127.0.0.1",
+                actual_port,
+                _soap_request(_password_digest_token("operator", "secret", nonce=new_nonce)),
+            )
+            assert b"HTTP/1.1 401 Unauthorized" in response
+        finally:
+            await server.stop()
+
     async def test_rejects_replayed_password_digest_username_token(self) -> None:
         camera = Camera(
             name="Secure Cam",
@@ -280,6 +374,43 @@ def _soap_request(security_header: str) -> str:
     )
 
 
+def _soap_request_with_body_username_token() -> str:
+    return (
+        '<?xml version="1.0"?>'
+        '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" '
+        'xmlns:tds="http://www.onvif.org/ver10/device/wsdl" '
+        'xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/'
+        'oasis-200401-wss-wssecurity-secext-1.0.xsd">'
+        "<s:Body>"
+        "<wsse:UsernameToken>"
+        "<wsse:Username>operator</wsse:Username>"
+        '<wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/'
+        'oasis-200401-wss-username-token-profile-1.0#PasswordText">secret</wsse:Password>'
+        "</wsse:UsernameToken>"
+        "<tds:GetDeviceInformation/>"
+        "</s:Body>"
+        "</s:Envelope>"
+    )
+
+
+def _soap_request_with_entity_token() -> str:
+    return (
+        '<?xml version="1.0"?>'
+        '<!DOCTYPE token [<!ENTITY username "operator">]>'
+        '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" '
+        'xmlns:tds="http://www.onvif.org/ver10/device/wsdl" '
+        'xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/'
+        'oasis-200401-wss-wssecurity-secext-1.0.xsd">'
+        "<s:Header><wsse:Security><wsse:UsernameToken>"
+        "<wsse:Username>&username;</wsse:Username>"
+        '<wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/'
+        'oasis-200401-wss-username-token-profile-1.0#PasswordText">secret</wsse:Password>'
+        "</wsse:UsernameToken></wsse:Security></s:Header>"
+        "<s:Body><tds:GetDeviceInformation/></s:Body>"
+        "</s:Envelope>"
+    )
+
+
 def _password_text_token(username: str, password: str) -> str:
     return (
         "<s:Header><wsse:Security><wsse:UsernameToken>"
@@ -290,9 +421,9 @@ def _password_text_token(username: str, password: str) -> str:
     )
 
 
-def _password_digest_token(username: str, password: str) -> str:
-    nonce = base64.b64encode(b"fixed-nonce").decode("ascii")
-    created = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+def _password_digest_token(username: str, password: str, nonce: str | None = None, created: str | None = None) -> str:
+    nonce = nonce or base64.b64encode(b"fixed-nonce").decode("ascii")
+    created = created or datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
     digest = _password_digest(nonce, created, password)
     return (
         "<s:Header><wsse:Security><wsse:UsernameToken>"

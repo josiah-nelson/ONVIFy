@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from datetime import UTC, datetime
 
 import pytest
 
@@ -185,6 +186,26 @@ class TestONVIFCameraServer:
         finally:
             await server.stop()
 
+    async def test_rejects_replayed_password_digest_username_token(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+        soap_request = _soap_request(_password_digest_token("operator", "secret"))
+
+        try:
+            first_response = await _send_soap_request("127.0.0.1", actual_port, soap_request)
+            second_response = await _send_soap_request("127.0.0.1", actual_port, soap_request)
+            assert b"HTTP/1.1 200 OK" in first_response
+            assert b"HTTP/1.1 401 Unauthorized" in second_response
+        finally:
+            await server.stop()
+
     async def test_rejects_invalid_username_token(self) -> None:
         camera = Camera(
             name="Secure Cam",
@@ -271,7 +292,7 @@ def _password_text_token(username: str, password: str) -> str:
 
 def _password_digest_token(username: str, password: str) -> str:
     nonce = base64.b64encode(b"fixed-nonce").decode("ascii")
-    created = "2026-05-25T21:35:00Z"
+    created = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
     digest = _password_digest(nonce, created, password)
     return (
         "<s:Header><wsse:Security><wsse:UsernameToken>"

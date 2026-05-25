@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import re
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from xml.etree import ElementTree
 
@@ -41,6 +42,7 @@ _PROFILE_TOKEN_PATTERN = re.compile(
 )
 _PASSWORD_DIGEST_TYPE = "PasswordDigest"
 _PASSWORD_TEXT_TYPE = "PasswordText"
+_USERNAME_TOKEN_MAX_AGE = timedelta(minutes=5)
 
 
 def _extract_action(body: str) -> str | None:
@@ -101,7 +103,33 @@ def _password_digest(nonce: str, created: str, password: str) -> str:
     return base64.b64encode(digest.digest()).decode("ascii")
 
 
-def _valid_username_token(body: str, username: str, password: str) -> bool:
+def _parse_created(created: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(created.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _created_is_fresh(created_at: datetime, now: datetime) -> bool:
+    return now - _USERNAME_TOKEN_MAX_AGE <= created_at <= now + _USERNAME_TOKEN_MAX_AGE
+
+
+def _prune_seen_nonces(seen_nonces: dict[str, datetime], now: datetime) -> None:
+    cutoff = now - _USERNAME_TOKEN_MAX_AGE
+    for nonce, created_at in list(seen_nonces.items()):
+        if created_at < cutoff:
+            del seen_nonces[nonce]
+
+
+def _valid_username_token(
+    body: str,
+    username: str,
+    password: str,
+    seen_nonces: dict[str, datetime],
+) -> bool:
     token = _username_token(body)
     if token is None:
         return False
@@ -118,7 +146,18 @@ def _valid_username_token(body: str, username: str, password: str) -> bool:
     created = _child_text(token, "Created")
     if not nonce or not created:
         return False
-    return hmac.compare_digest(actual_password, _password_digest(nonce, created, password))
+    created_at = _parse_created(created)
+    now = datetime.now(UTC)
+    if created_at is None or not _created_is_fresh(created_at, now):
+        return False
+    if not hmac.compare_digest(actual_password, _password_digest(nonce, created, password)):
+        return False
+
+    _prune_seen_nonces(seen_nonces, now)
+    if nonce in seen_nonces:
+        return False
+    seen_nonces[nonce] = created_at
+    return True
 
 
 class ONVIFCameraServer:
@@ -130,6 +169,7 @@ class ONVIFCameraServer:
         self._port = port
         self._device_info = ONVIFDeviceInfo(serial_number=str(camera.id))
         self._server: asyncio.Server | None = None
+        self._seen_username_token_nonces: dict[str, datetime] = {}
 
     @property
     def port(self) -> int:
@@ -218,7 +258,7 @@ class ONVIFCameraServer:
             return True
         if username is None:
             return False
-        return _valid_username_token(body, username, password or "")
+        return _valid_username_token(body, username, password or "", self._seen_username_token_nonces)
 
     def _resolve_stream_uri(self, profile_token: str | None) -> str:
         if profile_token:

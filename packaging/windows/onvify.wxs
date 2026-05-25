@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?define ProductVersion = "0.1.0" ?>
 <?define SourceDir = "dist" ?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
@@ -13,7 +12,6 @@
     <MediaTemplate EmbedCab="yes" />
 
     <Property Id="SERVICEACCOUNT" Value="NT AUTHORITY\NetworkService" Secure="yes" />
-    <Property Id="SERVICEPASSWORD" Hidden="yes" Secure="yes" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="ONVIFy" />
@@ -34,7 +32,6 @@
           Description="Enterprise ONVIF/RTSP virtual camera server"
           Start="auto"
           Account="[SERVICEACCOUNT]"
-          Password="[SERVICEPASSWORD]"
           ErrorControl="normal"
           Vital="yes"
         >

@@ -111,8 +111,8 @@ export default function App(): ReactElement {
           <Metric
             icon={Database}
             label="Database"
-            value={state.health?.database.connected ? "connected" : "offline"}
-            status={state.health?.database.connected ? "healthy" : "unavailable"}
+            value={state.health ? (state.health.database.connected ? "connected" : "offline") : "loading"}
+            status={state.health ? (state.health.database.connected ? "healthy" : "unavailable") : undefined}
           />
           <Metric icon={Camera} label="Cameras" value={`${state.health?.cameras_online ?? 0}/${state.health?.cameras_total ?? 0}`} />
           <Metric icon={Activity} label="Consumers" value={String(state.health?.stream_consumers_active ?? 0)} />

@@ -211,6 +211,33 @@ class TestSystemEndpoints:
         assert response.status_code == 200
         assert "version" in response.json()
 
+    def test_diagnostics(self, client: TestClient) -> None:
+        response = client.get("/api/system/diagnostics")
+        assert response.status_code == 200
+        data = response.json()
+        assert "version" in data
+        assert "uptime_seconds" in data
+        assert data["uptime_seconds"] >= 0
+        assert data["system"]["python_version"].startswith("3.")
+        assert data["cameras"]["total"] == 0
+        assert data["cameras"]["details"] == []
+        assert "backend" in data["inference"]
+
+    def test_diagnostics_with_camera(self, client: TestClient) -> None:
+        create_resp = client.post(
+            "/api/cameras/",
+            json={"name": "Diag Cam", "source_url": "rtsp://x", "ai_enabled": True},
+        )
+        assert create_resp.status_code == 201
+        response = client.get("/api/system/diagnostics")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cameras"]["total"] == 1
+        details = data["cameras"]["details"]
+        assert len(details) == 1
+        assert details[0]["name"] == "Diag Cam"
+        assert details[0]["ai_enabled"] is True
+
 
 class TestCameraEndpoints:
     def test_list_cameras_empty(self, client: TestClient) -> None:

@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     )
 
     root_dir: Path = Field(default_factory=lambda: Path(__file__).resolve().parent.parent.parent)
+    frontend_dist_dir: Path | None = None
     config_file: Path | None = None
     debug: bool = False
     log_format: Literal["json", "console"] = "console"

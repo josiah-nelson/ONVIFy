@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 from uuid import UUID
@@ -151,6 +152,79 @@ def install_recording_lifecycle_services(
     app.state.mediamtx = mediamtx
     app.state.stream_consumer = consumer
     return mediamtx, consumer
+
+
+class TestFrontendAssets:
+    def test_serves_built_frontend_index_and_assets(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        with self._client_with_dist(tmp_path, monkeypatch) as client:
+            index_response = client.get("/")
+            asset_response = client.get("/assets/app.js")
+            spa_response = client.get("/cameras/123")
+
+            assert index_response.status_code == 200
+            assert "ONVIFy UI" in index_response.text
+            assert index_response.headers["cache-control"] == "no-cache, must-revalidate"
+            assert asset_response.status_code == 200
+            assert "window.onvify" in asset_response.text
+            assert spa_response.status_code == 200
+            assert "ONVIFy UI" in spa_response.text
+            assert spa_response.headers["cache-control"] == "no-cache, must-revalidate"
+
+    def test_frontend_fallback_does_not_shadow_api_routes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with self._client_with_dist(tmp_path, monkeypatch) as client:
+            response = client.get("/api/not-found")
+
+            assert response.status_code == 404
+            assert response.json() == {"detail": "Not Found"}
+
+    def test_frontend_fallback_rejects_path_traversal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        (tmp_path / "secret.txt").write_text("outside dist", encoding="utf-8")
+        with self._client_with_dist(tmp_path, monkeypatch) as client:
+            response = client.get("/%2E%2E/secret.txt")
+
+            assert response.status_code == 404
+
+    def test_frontend_routes_disabled_without_dist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        with self._client(tmp_path, monkeypatch) as client:
+            response = client.get("/")
+
+            assert response.status_code == 404
+
+    @contextmanager
+    def _client_with_dist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+        dist = tmp_path / "frontend" / "dist"
+        assets = dist / "assets"
+        assets.mkdir(parents=True)
+        (dist / "index.html").write_text("<div>ONVIFy UI</div>", encoding="utf-8")
+        (dist / "site.webmanifest").write_text('{"name":"ONVIFy"}', encoding="utf-8")
+        (assets / "app.js").write_text("window.onvify = true;", encoding="utf-8")
+        with self._client(tmp_path, monkeypatch) as client:
+            yield client
+
+    def test_frontend_root_static_files_are_not_cached(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        with self._client_with_dist(tmp_path, monkeypatch) as client:
+            response = client.get("/site.webmanifest")
+            index_response = client.get("/index.html")
+
+            assert response.status_code == 200
+            assert response.headers["cache-control"] == "no-cache, must-revalidate"
+            assert index_response.status_code == 200
+            assert index_response.headers["cache-control"] == "no-cache, must-revalidate"
+
+    @contextmanager
+    def _client(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+        monkeypatch.setenv("ROOT_DIR", str(tmp_path))
+        from onvify.api.app import create_app
+        from onvify.api.dependencies import get_settings
+
+        get_settings.cache_clear()
+        try:
+            with TestClient(create_app()) as client:
+                yield client
+        finally:
+            get_settings.cache_clear()
 
 
 class TestSystemEndpoints:

@@ -90,6 +90,20 @@ class InferencePipeline:
     def update_sensitivity(self, sensitivity: int) -> None:
         self._gate.sensitivity = sensitivity
 
+    def update_config(
+        self,
+        *,
+        motion_sensitivity: int | None = None,
+        confidence_threshold: float | None = None,
+        cooldown_seconds: float | None = None,
+    ) -> None:
+        if motion_sensitivity is not None:
+            self._gate.sensitivity = motion_sensitivity
+        if confidence_threshold is not None:
+            self._confidence = confidence_threshold
+        if cooldown_seconds is not None:
+            self._cooldown = cooldown_seconds
+
     def reset(self) -> None:
         """Reset motion gate state (e.g., after camera reconnect)."""
         self._gate.reset()

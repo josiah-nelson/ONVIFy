@@ -9,6 +9,7 @@ from typing import cast
 import pytest
 
 from onvify.api.websocket import ConnectionManager
+from onvify.inference.pipeline import InferencePipeline
 from onvify.inference.protocol import InferenceBackend
 from onvify.infrastructure.database import Database
 from onvify.models.camera import Camera, Stream, StreamType
@@ -88,6 +89,35 @@ class TestStreamConsumerLifecycle:
         assert consumer.active_ai_cameras == {camera.id}
         assert consumer.get_frame_queue(camera.id) is not None
         await consumer.stop_all_async()
+
+    @pytest.mark.asyncio
+    async def test_update_inference_config_updates_running_pipelines(self) -> None:
+        manager = CameraManager()
+        camera = Camera(name="AI", source_streams=[Stream(url="rtsp://x")], ai_enabled=True)
+        await manager.add_camera(camera)
+        consumer = make_consumer(manager)
+        pipeline = InferencePipeline(
+            backend=cast(InferenceBackend, object()),
+            motion_sensitivity=25,
+            confidence_threshold=0.25,
+            cooldown_seconds=1.0,
+        )
+        consumer._pipelines[camera.id] = pipeline
+
+        consumer.update_inference_config(
+            motion_sensitivity=80,
+            confidence_threshold=0.75,
+            cooldown_seconds=10.0,
+            target_interval=1.25,
+        )
+
+        assert consumer._motion_sensitivity == 80
+        assert consumer._confidence_threshold == 0.75
+        assert consumer._cooldown_seconds == 10.0
+        assert consumer._target_interval == 1.25
+        assert pipeline._gate.sensitivity == 80
+        assert pipeline._confidence == 0.75
+        assert pipeline._cooldown == 10.0
 
     @pytest.mark.asyncio
     async def test_status_change_broadcasts_via_websocket(self, monkeypatch: pytest.MonkeyPatch) -> None:

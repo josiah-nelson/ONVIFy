@@ -60,7 +60,7 @@ def _parse_detections(content: str) -> list[Detection]:
         elif cls in ("animal", "cat", "dog", "bird"):
             object_class = ObjectClass.ANIMAL
 
-        bbox_data = item.get("bbox", {})
+        bbox_data = item.get("bbox") or {}
         detections.append(
             Detection(
                 object_class=object_class,
@@ -121,7 +121,11 @@ class OpenAICompatibleBackend:
         resp = await self._client.post(f"{self._base_url}/chat/completions", json=payload)
         resp.raise_for_status()
         body = resp.json()
-        content = body["choices"][0]["message"]["content"]
+        choices = body.get("choices") or []
+        if not choices:
+            logger.warning("openai_empty_choices", model=self._model)
+            return []
+        content = choices[0].get("message", {}).get("content") or "[]"
 
         all_detections = _parse_detections(content)
         return [d for d in all_detections if d.confidence >= confidence_threshold]

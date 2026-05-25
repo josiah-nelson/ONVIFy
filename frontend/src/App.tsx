@@ -128,17 +128,21 @@ function nullableText(value: string): string | null {
 
 export default function App(): ReactElement {
   const refreshInFlight = useRef(false);
+  const refreshGeneration = useRef(0);
   const [state, setState] = useState<DashboardState>(initialState);
   const [cameraForm, setCameraForm] = useState<CameraFormState>(emptyCameraForm);
   const [editingCameraId, setEditingCameraId] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState<CameraFormStatus>(initialFormStatus);
   const [deleteStatus, setDeleteStatus] = useState<DeleteStatus>(initialDeleteStatus);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    if (refreshInFlight.current) {
+  const refresh = useCallback(async (force = false): Promise<void> => {
+    if (refreshInFlight.current && !force) {
       return;
     }
-    refreshInFlight.current = true;
+    if (!force) {
+      refreshInFlight.current = true;
+    }
+    const requestGeneration = refreshGeneration.current;
     setState((current) => ({ ...current, loading: true, error: null }));
     try {
       const [healthResult, camerasResult, eventsResult] = await Promise.allSettled([
@@ -152,6 +156,9 @@ export default function App(): ReactElement {
       const failed = [healthResult, camerasResult, eventsResult].filter(
         (result): result is PromiseRejectedResult => result.status === "rejected"
       );
+      if (requestGeneration !== refreshGeneration.current) {
+        return;
+      }
       setState((current) => ({
         health: healthResult.status === "fulfilled" ? healthResult.value : current.health,
         cameras: camerasResult.status === "fulfilled" ? camerasResult.value : current.cameras,
@@ -160,7 +167,9 @@ export default function App(): ReactElement {
         loading: false
       }));
     } finally {
-      refreshInFlight.current = false;
+      if (!force) {
+        refreshInFlight.current = false;
+      }
     }
   }, []);
 
@@ -215,6 +224,7 @@ export default function App(): ReactElement {
           }),
           "PATCH /api/cameras/{camera_id}"
         );
+        refreshGeneration.current += 1;
         setCameraForm(cameraToForm(updated));
         setState((current) => ({
           ...current,
@@ -230,11 +240,12 @@ export default function App(): ReactElement {
           stream_type: cameraForm.stream_type === "unknown" ? "rtsp" : cameraForm.stream_type
         };
         const created = await readApiResponse(api.POST("/api/cameras/", { body }), "POST /api/cameras/");
+        refreshGeneration.current += 1;
         setCameraForm({ ...emptyCameraForm });
         setState((current) => ({ ...current, cameras: [...current.cameras, created] }));
         setFormStatus((current) => ({ ...current, error: null, message: "Camera added." }));
       }
-      void refresh();
+      void refresh(true);
     } catch (error) {
       setFormStatus((current) => ({ ...current, error: errorMessage(error), message: null }));
     } finally {
@@ -252,12 +263,13 @@ export default function App(): ReactElement {
         api.DELETE("/api/cameras/{camera_id}", { params: { path: { camera_id: camera.id } } }),
         "DELETE /api/cameras/{camera_id}"
       );
+      refreshGeneration.current += 1;
       setState((current) => ({ ...current, cameras: current.cameras.filter((item) => item.id !== camera.id) }));
       if (editingCameraId === camera.id) {
         resetCameraForm();
       }
       setDeleteStatus({ error: null, message: "Camera deleted.", removingCameraId: null });
-      void refresh();
+      void refresh(true);
     } catch (error) {
       setDeleteStatus({ error: errorMessage(error), message: null, removingCameraId: null });
     } finally {
@@ -273,7 +285,7 @@ export default function App(): ReactElement {
             <h1 className="text-2xl font-semibold tracking-normal">ONVIFy</h1>
             <p className="text-sm text-muted-foreground">Virtual camera operations</p>
           </div>
-          <Button onClick={() => void refresh()} disabled={state.loading}>
+          <Button onClick={() => void refresh(true)} disabled={state.loading}>
             <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>

@@ -517,11 +517,15 @@ class TestStreamEndpoints:
         assert response.json() == []
 
     def test_list_streams_with_camera(self, client: TestClient) -> None:
-        client.post("/api/cameras/", json={"name": "S", "source_url": "rtsp://x"})
+        client.post(
+            "/api/cameras/",
+            json={"name": "S", "source_url": "rtsp://user:secret@example.test/stream?channel=1"},
+        )
         response = client.get("/api/streams/")
         data = response.json()
         assert len(data) == 1
         assert data[0]["camera_name"] == "S"
+        assert data[0]["source_url"] == "rtsp://***@example.test/stream?channel=1"
         assert data[0]["ai_active"] is False
 
     def test_mjpeg_preview_missing_camera(self, client: TestClient) -> None:

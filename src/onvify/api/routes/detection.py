@@ -38,7 +38,7 @@ class UpdateDetectionConfigRequest(BaseModel, extra="forbid"):
 def _serialize_inference_config(inf: InferenceSettings) -> dict[str, object]:
     return {
         "backend": inf.backend,
-        "backend_url": redact_url(inf.backend_url),
+        "backend_url": redact_url(inf.backend_url, strip_query=True),
         "default_model": inf.default_model,
         "confidence_threshold_pct": inf.confidence_threshold,
         "confidence_threshold": inf.confidence_threshold / 100.0,

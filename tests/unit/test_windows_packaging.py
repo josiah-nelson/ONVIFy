@@ -57,3 +57,4 @@ def test_wix_project_registers_onvify_as_windows_service() -> None:
     assert service_control.attrib["Start"] == "install"
     assert service_control.attrib["Stop"] == "both"
     assert service_control.attrib["Remove"] == "uninstall"
+    assert service_control.attrib["Wait"] == "no"

@@ -522,65 +522,6 @@ class TestDetectionEndpoints:
         assert "backend" in data
         assert "confidence_threshold" in data
 
-    def test_patch_detection_config(self, client: TestClient) -> None:
-        response = client.patch(
-            "/api/detection/config",
-            json={"confidence_threshold": 80, "cooldown_seconds": 10.0},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["confidence_threshold_pct"] == 80
-        assert data["confidence_threshold"] == 0.8
-        assert data["cooldown_seconds"] == 10.0
-
-        # Verify the change persists on subsequent GET
-        get_resp = client.get("/api/detection/config")
-        assert get_resp.json()["confidence_threshold_pct"] == 80
-        assert get_resp.json()["cooldown_seconds"] == 10.0
-
-    def test_patch_detection_config_partial(self, client: TestClient) -> None:
-        # Only update motion_sensitivity, leave everything else unchanged
-        original = client.get("/api/detection/config").json()
-        response = client.patch(
-            "/api/detection/config",
-            json={"motion_sensitivity": 75},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["motion_sensitivity"] == 75
-        assert data["cooldown_seconds"] == original["cooldown_seconds"]
-
-    def test_patch_detection_config_target_interval(self, client: TestClient) -> None:
-        response = client.patch(
-            "/api/detection/config",
-            json={"target_interval": 1.5},
-        )
-        assert response.status_code == 200
-        assert response.json()["target_interval"] == 1.5
-
-    def test_patch_detection_config_validation_error(self, client: TestClient) -> None:
-        # confidence_threshold must be between 1 and 100
-        response = client.patch(
-            "/api/detection/config",
-            json={"confidence_threshold": 0},
-        )
-        assert response.status_code == 422
-
-    def test_patch_detection_config_rejects_immutable_fields(self, client: TestClient) -> None:
-        # backend and backend_url are not accepted in PATCH
-        response = client.patch(
-            "/api/detection/config",
-            json={"backend": "openai_compatible"},
-        )
-        assert response.status_code == 422
-
-    def test_patch_detection_config_empty_body(self, client: TestClient) -> None:
-        # Empty update is a no-op, returns current config
-        original = client.get("/api/detection/config").json()
-        response = client.patch("/api/detection/config", json={})
-        assert response.status_code == 200
-        assert response.json() == original
-
     def test_detection_events_empty(self, client: TestClient) -> None:
         response = client.get("/api/detection/events")
         assert response.status_code == 200

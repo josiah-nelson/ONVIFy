@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?define SourceDir = "dist" ?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="ONVIFy"
+    Manufacturer="ONVIFy"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="8F6B8C9F-2732-4F44-AFD0-AAD70F14D5E2"
+    Scope="perMachine"
+  >
+    <MajorUpgrade DowngradeErrorMessage="A newer version of ONVIFy is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="SERVICEACCOUNT" Value="NT AUTHORITY\NetworkService" Secure="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="ONVIFy" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="ONVIFy" Level="1">
+      <ComponentGroupRef Id="ONVIFyServiceComponents" />
+    </Feature>
+
+    <ComponentGroup Id="ONVIFyServiceComponents" Directory="INSTALLFOLDER">
+      <Component Id="ONVIFyServiceExecutable" Guid="70D6D30C-6CC7-45DF-9875-CFA2A3F94F7D">
+        <File Id="ONVIFyExe" Source="$(var.SourceDir)\onvify.exe" KeyPath="yes" />
+        <ServiceInstall
+          Id="ONVIFyServiceInstall"
+          Type="ownProcess"
+          Name="ONVIFy"
+          DisplayName="ONVIFy"
+          Description="Enterprise ONVIF/RTSP virtual camera server"
+          Start="auto"
+          Account="[SERVICEACCOUNT]"
+          ErrorControl="normal"
+          Vital="yes"
+        >
+          <ServiceDependency Id="Tcpip" />
+          <ServiceDependency Id="Afd" />
+          <ServiceConfigFailureActions
+            Id="ONVIFyServiceFailureActions"
+            OnInstall="yes"
+            OnReinstall="yes"
+            ResetPeriod="86400"
+          >
+            <Failure Action="restartService" Delay="5000" />
+            <Failure Action="restartService" Delay="5000" />
+            <Failure Action="restartService" Delay="5000" />
+          </ServiceConfigFailureActions>
+        </ServiceInstall>
+        <ServiceControl
+          Id="ONVIFyServiceStart"
+          Name="ONVIFy"
+          Start="install"
+          Wait="no"
+        />
+        <ServiceControl
+          Id="ONVIFyServiceStop"
+          Name="ONVIFy"
+          Stop="both"
+          Remove="uninstall"
+          Wait="yes"
+        />
+      </Component>
+    </ComponentGroup>
+  </Package>
+</Wix>

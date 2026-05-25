@@ -1,6 +1,6 @@
 import { Activity, Camera, CircleAlert, RefreshCw, Server } from "lucide-react";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -46,6 +46,8 @@ const initialState: DashboardState = {
   loading: true
 };
 
+const REFRESH_INTERVAL_MS = 30_000;
+
 async function loadJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
   if (!response.ok) {
@@ -67,7 +69,7 @@ function statusClass(status: string): string {
 export default function App(): ReactElement {
   const [state, setState] = useState<DashboardState>(initialState);
 
-  async function refresh(): Promise<void> {
+  const refresh = useCallback(async (): Promise<void> => {
     setState((current) => ({ ...current, loading: true, error: null }));
     try {
       const [health, cameras, events] = await Promise.all([
@@ -83,11 +85,13 @@ export default function App(): ReactElement {
         loading: false
       }));
     }
-  }
+  }, []);
 
   useEffect(() => {
     void refresh();
-  }, []);
+    const interval = window.setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [refresh]);
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -111,10 +115,15 @@ export default function App(): ReactElement {
         ) : null}
 
         <section className="grid gap-3 md:grid-cols-4">
-          <Metric icon={Server} label="System" value={state.health?.status ?? "loading"} />
+          <Metric icon={Server} label="System" value={state.health?.status ?? "loading"} status={state.health?.status} />
           <Metric icon={Camera} label="Cameras" value={`${state.health?.cameras_online ?? 0}/${state.health?.cameras_total ?? 0}`} />
           <Metric icon={Activity} label="Consumers" value={String(state.health?.stream_consumers_active ?? 0)} />
-          <Metric icon={Activity} label="Inference" value={state.health?.inference.health ?? "unknown"} />
+          <Metric
+            icon={Activity}
+            label="Inference"
+            value={state.health?.inference.health ?? "unknown"}
+            status={state.health?.inference.health}
+          />
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
@@ -187,17 +196,20 @@ export default function App(): ReactElement {
 type MetricProps = {
   icon: typeof Server;
   label: string;
+  status?: string;
   value: string;
 };
 
-function Metric({ icon: Icon, label, value }: MetricProps): ReactElement {
+function Metric({ icon: Icon, label, status, value }: MetricProps): ReactElement {
+  const valueClass = status ? statusClass(status) : "bg-muted text-muted-foreground";
+
   return (
     <div className="rounded-md border border-border bg-white px-4 py-3">
       <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
         <Icon className="h-4 w-4 text-cyan-700" />
         <span>{label}</span>
       </div>
-      <div className={`inline-flex rounded-md px-2 py-1 text-sm font-semibold ${statusClass(value)}`}>{value}</div>
+      <div className={`inline-flex rounded-md px-2 py-1 text-sm font-semibold ${valueClass}`}>{value}</div>
     </div>
   );
 }

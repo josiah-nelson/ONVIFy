@@ -42,7 +42,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 
 - [ ] **CoreML export pipeline** — Implement automatic YOLO-to-CoreML export and caching on first run for Apple Silicon (the logic exists in the fork and needs to be ported into `local_yolo.py`).
 - [ ] **Process isolation** — Move local YOLO inference into a separate worker process via `multiprocessing` to avoid GIL contention with the async event loop.
-- [ ] **OpenAI-compatible backend testing** — Integration test with a mock server that validates the request format and response parsing.
+- [x] **OpenAI-compatible backend testing** — Integration test with a mock server that validates the request format and response parsing.
 - [x] **Inference health endpoint** — Expose backend health status via `GET /api/detection/health` using the backend's `health_check()` method.
 - [ ] **Test fixtures** — Record or source short MP4 samples (person, vehicle, static scene, multi-object) and add to `tests/fixtures/`.
 

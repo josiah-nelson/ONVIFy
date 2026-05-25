@@ -20,7 +20,7 @@ def main() -> int:
     from onvify.api.app import create_app
 
     generated_dir.mkdir(parents=True, exist_ok=True)
-    schema_path.write_text(json.dumps(create_app().openapi(), indent=2, sort_keys=True) + "\n")
+    schema_path.write_text(json.dumps(create_app().openapi(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     npm = "npm.cmd" if sys.platform == "win32" else "npm"
     subprocess.run(

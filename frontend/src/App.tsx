@@ -1,8 +1,8 @@
-import { Activity, Camera, CircleAlert, RefreshCw, Server } from "lucide-react";
+import { Activity, Camera, CircleAlert, Database, RefreshCw, Server } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api, type GetResponse } from "@/api/client";
+import { api, type GetResponse, readApiResponse } from "@/api/client";
 import { Button } from "@/components/ui/button";
 
 type Health = GetResponse<"/api/system/health">;
@@ -26,27 +26,6 @@ const initialState: DashboardState = {
 };
 
 const REFRESH_INTERVAL_MS = 30_000;
-
-async function readApiResponse<T>(
-  request: Promise<{ data?: T; error?: unknown; response: Response }>,
-  path: string
-): Promise<T> {
-  const { data, error, response } = await request;
-  if (data !== undefined) {
-    return data;
-  }
-  throw new Error(`${path} returned ${response.status}: ${apiErrorMessage(error)}`);
-}
-
-function apiErrorMessage(error: unknown): string {
-  if (typeof error === "object" && error !== null && "detail" in error) {
-    const detail = (error as { detail?: unknown }).detail;
-    if (typeof detail === "string") {
-      return detail;
-    }
-  }
-  return "Request failed";
-}
 
 function statusClass(status: string): string {
   if (status === "ok" || status === "online" || status === "healthy") {
@@ -127,8 +106,14 @@ export default function App(): ReactElement {
           </section>
         ) : null}
 
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Metric icon={Server} label="System" value={state.health?.status ?? "loading"} status={state.health?.status} />
+          <Metric
+            icon={Database}
+            label="Database"
+            value={state.health?.database.connected ? "connected" : "offline"}
+            status={state.health?.database.connected ? "healthy" : "unavailable"}
+          />
           <Metric icon={Camera} label="Cameras" value={`${state.health?.cameras_online ?? 0}/${state.health?.cameras_total ?? 0}`} />
           <Metric icon={Activity} label="Consumers" value={String(state.health?.stream_consumers_active ?? 0)} />
           <Metric

@@ -124,6 +124,12 @@ class TestParseDetections:
         result = _parse_detections(_detections_json([PERSON_DETECTION]))
         assert result[0].label == "person"
 
+    def test_bbox_null_uses_defaults(self) -> None:
+        det = {"class": "person", "confidence": 0.9, "bbox": None}
+        result = _parse_detections(_detections_json([det]))
+        assert result[0].bbox.x_min == 0.0
+        assert result[0].bbox.y_max == 1.0
+
 
 class TestDetect:
     @pytest.fixture
@@ -227,6 +233,36 @@ class TestDetect:
             await backend.detect(FAKE_FRAME)
 
         assert "authorization" not in captured_requests[0].headers
+
+    async def test_empty_choices_returns_empty(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"id": "test", "choices": []})
+
+        backend = OpenAICompatibleBackend(base_url="http://mock-server/v1")
+        backend._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            headers=dict(backend._client.headers),
+        )
+
+        with patch("onvify.inference.openai_compatible._frame_to_data_uri", return_value=FAKE_DATA_URI):
+            result = await backend.detect(FAKE_FRAME)
+
+        assert result == []
+
+    async def test_missing_choices_key_returns_empty(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"id": "test", "object": "chat.completion"})
+
+        backend = OpenAICompatibleBackend(base_url="http://mock-server/v1")
+        backend._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            headers=dict(backend._client.headers),
+        )
+
+        with patch("onvify.inference.openai_compatible._frame_to_data_uri", return_value=FAKE_DATA_URI):
+            result = await backend.detect(FAKE_FRAME)
+
+        assert result == []
 
 
 class TestHealthCheck:

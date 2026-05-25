@@ -52,8 +52,8 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 - [ ] **WiX MSI project** — Create the WiX v6/v7 `.wxs` file in `packaging/windows/` with ServiceInstall/ServiceControl elements for native Windows Service registration.
 - [ ] **PyInstaller bundling** — Script to bundle the Python app into a standalone executable for Windows MSI packaging.
 - [ ] **MSI lifecycle test script** — Automated install/verify/uninstall test (similar to BANS `test-msi-lifecycle.ps1`).
-- [ ] **Dockerfile** — Multi-stage Dockerfile for containerized deployment.
-- [ ] **docker-compose.yml** — Compose file bundling ONVIFy + MediaMTX.
+- [x] **Dockerfile** — Multi-stage Dockerfile for containerized deployment.
+- [x] **docker-compose.yml** — Compose file bundling ONVIFy + MediaMTX.
 
 ## Streams and Detection API
 

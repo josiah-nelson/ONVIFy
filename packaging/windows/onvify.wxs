@@ -52,12 +52,17 @@
           </ServiceConfigFailureActions>
         </ServiceInstall>
         <ServiceControl
-          Id="ONVIFyServiceControl"
+          Id="ONVIFyServiceStart"
           Name="ONVIFy"
           Start="install"
+          Wait="no"
+        />
+        <ServiceControl
+          Id="ONVIFyServiceStop"
+          Name="ONVIFy"
           Stop="both"
           Remove="uninstall"
-          Wait="no"
+          Wait="yes"
         />
       </Component>
     </ComponentGroup>

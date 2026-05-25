@@ -52,9 +52,13 @@ def test_wix_project_registers_onvify_as_windows_service() -> None:
         ("restartService", "5000"),
     ]
 
-    service_control = _find_required(root, ".//wix:ServiceControl")
-    assert service_control.attrib["Name"] == "ONVIFy"
-    assert service_control.attrib["Start"] == "install"
-    assert service_control.attrib["Stop"] == "both"
-    assert service_control.attrib["Remove"] == "uninstall"
-    assert service_control.attrib["Wait"] == "no"
+    service_start = _find_required(root, ".//wix:ServiceControl[@Id='ONVIFyServiceStart']")
+    assert service_start.attrib["Name"] == "ONVIFy"
+    assert service_start.attrib["Start"] == "install"
+    assert service_start.attrib["Wait"] == "no"
+
+    service_stop = _find_required(root, ".//wix:ServiceControl[@Id='ONVIFyServiceStop']")
+    assert service_stop.attrib["Name"] == "ONVIFy"
+    assert service_stop.attrib["Stop"] == "both"
+    assert service_stop.attrib["Remove"] == "uninstall"
+    assert service_stop.attrib["Wait"] == "yes"

@@ -26,7 +26,7 @@ RUN groupadd --gid 1000 onvify \
 WORKDIR /app
 
 COPY --from=builder /build/dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl "onvify[inference]" \
+RUN pip install --no-cache-dir "/tmp/onvify-*.whl[inference]" \
     && rm -f /tmp/*.whl
 
 RUN mkdir -p /app/data && chown onvify:onvify /app/data

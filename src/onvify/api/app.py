@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from onvify import __version__
 from onvify.api.dependencies import get_settings
+from onvify.api.middleware import StructlogContextMiddleware
 from onvify.api.routes import cameras, detection, streams, system
 from onvify.api.websocket import ConnectionManager
 from onvify.inference.factory import create_inference_backend
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    app.add_middleware(StructlogContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

@@ -139,6 +139,12 @@ class StreamConsumer:
     async def _consume_loop(self, camera: Camera) -> None:
         from onvify.inference.pipeline import InferencePipeline
 
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            camera_id=str(camera.id),
+            stream_id=camera.primary_stream.label if camera.primary_stream else None,
+        )
+
         pipeline: InferencePipeline | None = None
         if camera.ai_enabled:
             pipeline = InferencePipeline(

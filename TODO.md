@@ -25,7 +25,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 
 - [x] **React SPA scaffold** — Initialize the React + TypeScript + Tailwind + shadcn/ui project in `frontend/`.
 - [x] **API client generation** — Auto-generate a typed TypeScript API client from FastAPI's OpenAPI schema.
-- [ ] **Camera management UI** — CRUD interface for adding, editing, and removing cameras.
+- [x] **Camera management UI** — CRUD interface for adding, editing, and removing cameras.
 - [ ] **Live stream preview** — Display MJPEG preview streams in the browser for each camera.
 - [ ] **Detection event feed** — Real-time event display via WebSocket with filtering by camera, object class, and time range.
 - [ ] **Grid view / multi-camera layout** — Multi-camera grid composer for monitoring dashboards.

@@ -7,12 +7,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from onvify import __version__
 from onvify.api.dependencies import get_settings
-from onvify.api.middleware import StructlogContextMiddleware
+from onvify.api.middleware import StructlogContextMiddleware, bind_request_log_context
 from onvify.api.routes import cameras, detection, streams, system
 from onvify.api.websocket import ConnectionManager
 from onvify.inference.factory import create_inference_backend
@@ -100,8 +100,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(cameras.router, prefix="/api/cameras", tags=["cameras"])
-    app.include_router(streams.router, prefix="/api/streams", tags=["streams"])
+    log_context_dependency = [Depends(bind_request_log_context)]
+    app.include_router(cameras.router, prefix="/api/cameras", tags=["cameras"], dependencies=log_context_dependency)
+    app.include_router(streams.router, prefix="/api/streams", tags=["streams"], dependencies=log_context_dependency)
     app.include_router(detection.router, prefix="/api/detection", tags=["detection"])
     app.include_router(system.router, prefix="/api/system", tags=["system"])
 

@@ -6,9 +6,10 @@ from typing import Any
 
 import pytest
 import structlog
+from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
-from onvify.api.middleware import StructlogContextMiddleware
+from onvify.api.middleware import StructlogContextMiddleware, bind_request_log_context
 
 
 async def _receive() -> Message:
@@ -37,25 +38,34 @@ class TestStructlogContextMiddleware:
         assert [message["type"] for message in messages] == ["http.response.start", "http.response.body"]
         assert structlog.contextvars.get_contextvars() == {}
 
-    @pytest.mark.asyncio
-    async def test_ignores_none_stream_id_from_path_params(self) -> None:
-        contexts: list[dict[str, Any]] = []
-
-        async def app(scope: Scope, receive: Receive, send: Send) -> None:
-            contexts.append(structlog.contextvars.get_contextvars())
-            await send({"type": "http.response.start", "status": 200, "headers": []})
-            await send({"type": "http.response.body", "body": b"ok"})
-
-        async def send(message: Message) -> None:
-            return None
-
+    def test_bind_request_log_context_uses_routed_path_params(self) -> None:
         scope: Scope = {
             "type": "http",
             "path": "/ignored",
+            "headers": [],
+            "path_params": {"camera_id": "cam-1", "stream_id": "main"},
+        }
+
+        structlog.contextvars.clear_contextvars()
+        try:
+            bind_request_log_context(Request(scope))
+
+            assert structlog.contextvars.get_contextvars() == {"camera_id": "cam-1", "stream_id": "main"}
+        finally:
+            structlog.contextvars.clear_contextvars()
+
+    def test_bind_request_log_context_ignores_none_stream_id(self) -> None:
+        scope: Scope = {
+            "type": "http",
+            "path": "/ignored",
+            "headers": [],
             "path_params": {"camera_id": "cam-1", "stream_id": None},
         }
 
-        await StructlogContextMiddleware(app)(scope, _receive, send)
+        structlog.contextvars.clear_contextvars()
+        try:
+            bind_request_log_context(Request(scope))
 
-        assert contexts == [{"camera_id": "cam-1"}]
-        assert structlog.contextvars.get_contextvars() == {}
+            assert structlog.contextvars.get_contextvars() == {"camera_id": "cam-1"}
+        finally:
+            structlog.contextvars.clear_contextvars()

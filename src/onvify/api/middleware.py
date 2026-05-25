@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
+from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 
@@ -30,13 +31,14 @@ class StructlogContextMiddleware:
 
 
 def _extract_log_context(scope: Scope) -> dict[str, str]:
-    context: dict[str, str] = {}
-    raw_path_params = scope.get("path_params")
-    if isinstance(raw_path_params, dict):
-        context.update(_string_context(raw_path_params))
-    if context:
-        return context
     return _path_context(str(scope.get("path", "")))
+
+
+def bind_request_log_context(request: Request) -> None:
+    """Bind routed path parameters after FastAPI has populated them."""
+    context = _string_context(request.path_params)
+    if context:
+        structlog.contextvars.bind_contextvars(**context)
 
 
 def _string_context(values: dict[str, Any]) -> dict[str, str]:

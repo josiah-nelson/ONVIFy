@@ -144,7 +144,7 @@ def _register_frontend_routes(app: FastAPI, settings: Settings) -> None:
             raise HTTPException(status_code=404, detail="Not Found") from err
 
         if candidate.is_file():
-            return FileResponse(candidate)
+            return FileResponse(candidate, headers=_INDEX_CACHE_HEADERS)
         return _frontend_index_response(index_path)
 
 

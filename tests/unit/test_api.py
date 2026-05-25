@@ -200,8 +200,17 @@ class TestFrontendAssets:
         assets = dist / "assets"
         assets.mkdir(parents=True)
         (dist / "index.html").write_text("<div>ONVIFy UI</div>", encoding="utf-8")
+        (dist / "site.webmanifest").write_text('{"name":"ONVIFy"}', encoding="utf-8")
         (assets / "app.js").write_text("window.onvify = true;", encoding="utf-8")
         return self._client(tmp_path, monkeypatch)
+
+    def test_frontend_root_static_files_are_not_cached(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = self._client_with_dist(tmp_path, monkeypatch)
+
+        response = client.get("/site.webmanifest")
+
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-cache, must-revalidate"
 
     def _client(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         monkeypatch.setenv("ROOT_DIR", str(tmp_path))

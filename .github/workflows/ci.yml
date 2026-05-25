@@ -70,10 +70,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
+      - name: Locate Python
+        shell: pwsh
+        run: |
+          $py = (Get-Command python -ErrorAction SilentlyContinue).Source
+          if (-not $py) { $py = (Get-Command py -ErrorAction SilentlyContinue).Source }
+          if (-not $py) { throw "Python not found on this runner. Install Python 3.13+." }
+          $info = & $py -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}'); print(sys.version.split()[0]); print(sys.executable)"
+          $lines = $info -split "`n"
+          $major = [int]$lines[0].Split('.')[0]; $minor = [int]$lines[0].Split('.')[1]
+          if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 13)) {
+            throw "Python >= 3.13 required, found Python $($lines[1])"
+          }
+          $pyDir = Split-Path $lines[2]
+          $pyDir + "`n" + "$pyDir\Scripts" | Out-File -Append $env:GITHUB_PATH
+          Write-Host "Using Python $($lines[1]) at $($lines[2])"
 
       - name: Install dependencies
         run: pip install -e ".[dev,inference]"
@@ -107,10 +118,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
+      - name: Locate Python
+        run: |
+          command -v python3 || { echo "Python 3 not found. Install via: brew install python@3.13"; exit 1; }
+          version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+          major=${version%%.*}; minor=${version##*.}
+          if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 13 ]; }; then
+            echo "Python >= 3.13 required, found $(python3 --version)"; exit 1
+          fi
+          echo "Using $(python3 --version) at $(command -v python3)"
 
       - name: Install dependencies
         run: |
@@ -142,10 +158,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
+      - name: Locate Python
+        shell: pwsh
+        run: |
+          $py = (Get-Command python -ErrorAction SilentlyContinue).Source
+          if (-not $py) { $py = (Get-Command py -ErrorAction SilentlyContinue).Source }
+          if (-not $py) { throw "Python not found on this runner. Install Python 3.13+." }
+          $info = & $py -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}'); print(sys.version.split()[0]); print(sys.executable)"
+          $lines = $info -split "`n"
+          $major = [int]$lines[0].Split('.')[0]; $minor = [int]$lines[0].Split('.')[1]
+          if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 13)) {
+            throw "Python >= 3.13 required, found Python $($lines[1])"
+          }
+          $pyDir = Split-Path $lines[2]
+          $pyDir + "`n" + "$pyDir\Scripts" | Out-File -Append $env:GITHUB_PATH
+          Write-Host "Using Python $($lines[1]) at $($lines[2])"
 
       - name: Determine version
         id: version

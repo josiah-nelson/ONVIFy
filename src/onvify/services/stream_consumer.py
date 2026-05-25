@@ -140,10 +140,10 @@ class StreamConsumer:
         from onvify.inference.pipeline import InferencePipeline
 
         structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(
-            camera_id=str(camera.id),
-            stream_id=camera.primary_stream.label if camera.primary_stream else None,
-        )
+        context = {"camera_id": str(camera.id)}
+        if camera.primary_stream is not None:
+            context["stream_id"] = camera.primary_stream.label
+        structlog.contextvars.bind_contextvars(**context)
 
         pipeline: InferencePipeline | None = None
         if camera.ai_enabled:

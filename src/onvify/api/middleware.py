@@ -1,30 +1,59 @@
-"""FastAPI middleware for structured log context binding."""
+"""ASGI middleware for structured log context binding."""
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
-class StructlogContextMiddleware(BaseHTTPMiddleware):
-    """Bind camera_id (and stream_id when present) from path parameters to structlog context.
+class StructlogContextMiddleware:
+    """Bind camera_id and stream_id context without wrapping streaming responses."""
 
-    This ensures all log messages emitted during request processing automatically
-    include the relevant identifiers without manual passing.
-    """
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in {"http", "websocket"}:
+            await self._app(scope, receive, send)
+            return
+
         structlog.contextvars.clear_contextvars()
-
-        path_params = request.path_params
-        if "camera_id" in path_params:
-            structlog.contextvars.bind_contextvars(camera_id=str(path_params["camera_id"]))
-        if "stream_id" in path_params:
-            structlog.contextvars.bind_contextvars(stream_id=str(path_params["stream_id"]))
-
+        context = _extract_log_context(scope)
+        if context:
+            structlog.contextvars.bind_contextvars(**context)
         try:
-            return await call_next(request)
+            await self._app(scope, receive, send)
         finally:
             structlog.contextvars.clear_contextvars()
+
+
+def _extract_log_context(scope: Scope) -> dict[str, str]:
+    context: dict[str, str] = {}
+    raw_path_params = scope.get("path_params")
+    if isinstance(raw_path_params, dict):
+        context.update(_string_context(raw_path_params))
+    if context:
+        return context
+    return _path_context(str(scope.get("path", "")))
+
+
+def _string_context(values: dict[str, Any]) -> dict[str, str]:
+    context: dict[str, str] = {}
+    camera_id = values.get("camera_id")
+    if camera_id is not None:
+        context["camera_id"] = str(camera_id)
+    stream_id = values.get("stream_id")
+    if stream_id is not None:
+        context["stream_id"] = str(stream_id)
+    return context
+
+
+def _path_context(path: str) -> dict[str, str]:
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 3 or parts[0] != "api":
+        return {}
+    if parts[1] in {"cameras", "streams"}:
+        return {"camera_id": parts[2]}
+    return {}

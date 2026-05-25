@@ -69,6 +69,7 @@ class RecordingStreamConsumer:
     def __init__(self) -> None:
         self.started: list[UUID] = []
         self.stopped: list[UUID] = []
+        self.inference_config_updates: list[dict[str, float | int | None]] = []
 
     @property
     def active_cameras(self) -> set[UUID]:
@@ -84,6 +85,23 @@ class RecordingStreamConsumer:
 
     def stop_camera(self, camera_id: UUID) -> None:
         self.stopped.append(camera_id)
+
+    def update_inference_config(
+        self,
+        *,
+        motion_sensitivity: int | None = None,
+        confidence_threshold: float | None = None,
+        cooldown_seconds: float | None = None,
+        target_interval: float | None = None,
+    ) -> None:
+        self.inference_config_updates.append(
+            {
+                "motion_sensitivity": motion_sensitivity,
+                "confidence_threshold": confidence_threshold,
+                "cooldown_seconds": cooldown_seconds,
+                "target_interval": target_interval,
+            }
+        )
 
     async def stop_all_async(self) -> None:
         return None
@@ -499,11 +517,15 @@ class TestStreamEndpoints:
         assert response.json() == []
 
     def test_list_streams_with_camera(self, client: TestClient) -> None:
-        client.post("/api/cameras/", json={"name": "S", "source_url": "rtsp://x"})
+        client.post(
+            "/api/cameras/",
+            json={"name": "S", "source_url": "rtsp://user:secret@example.test/stream?channel=1"},
+        )
         response = client.get("/api/streams/")
         data = response.json()
         assert len(data) == 1
         assert data[0]["camera_name"] == "S"
+        assert data[0]["source_url"] == "rtsp://***@example.test/stream?channel=1"
         assert data[0]["ai_active"] is False
 
     def test_mjpeg_preview_missing_camera(self, client: TestClient) -> None:
@@ -648,6 +670,84 @@ class TestStreamStatusEndpoint:
         response = client.get("/api/streams/status")
         assert response.status_code == 200
         assert response.json() == []
+
+
+class TestDetectionConfig:
+    def test_get_detection_config(self, client: TestClient) -> None:
+        response = client.get("/api/detection/config")
+        assert response.status_code == 200
+        data = response.json()
+        assert "backend" in data
+        assert "confidence_threshold" in data
+        assert "motion_sensitivity" in data
+        assert data["persistent"] is False
+
+    def test_get_detection_config_redacts_backend_url(self, client: TestClient) -> None:
+        from onvify.api.dependencies import get_settings
+
+        settings = get_settings()
+        settings.inference.backend_url = "https://user:secret@example.test/v1?api_key=hidden#token"
+
+        response = client.get("/api/detection/config")
+
+        assert response.status_code == 200
+        assert response.json()["backend_url"] == "https://***@example.test/v1"
+
+    def test_patch_detection_config(self, client: TestClient) -> None:
+        _, consumer = install_recording_lifecycle_services(client)
+
+        response = client.patch("/api/detection/config", json={"confidence_threshold": 75})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["confidence_threshold_pct"] == 75
+        assert data["confidence_threshold"] == 0.75
+        assert data["persistent"] is False
+        assert data["applied_to_running_streams"] is True
+        assert consumer.inference_config_updates == [
+            {
+                "motion_sensitivity": None,
+                "confidence_threshold": 0.75,
+                "cooldown_seconds": None,
+                "target_interval": None,
+            }
+        ]
+
+        get_response = client.get("/api/detection/config")
+        assert get_response.status_code == 200
+        assert get_response.json()["confidence_threshold_pct"] == 75
+
+    def test_patch_detection_config_multiple_fields(self, client: TestClient) -> None:
+        _, consumer = install_recording_lifecycle_services(client)
+
+        response = client.patch(
+            "/api/detection/config",
+            json={"motion_sensitivity": 80, "cooldown_seconds": 10.0},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["motion_sensitivity"] == 80
+        assert data["cooldown_seconds"] == 10.0
+        assert consumer.inference_config_updates == [
+            {
+                "motion_sensitivity": 80,
+                "confidence_threshold": None,
+                "cooldown_seconds": 10.0,
+                "target_interval": None,
+            }
+        ]
+
+    def test_patch_detection_config_validation_error(self, client: TestClient) -> None:
+        response = client.patch("/api/detection/config", json={"confidence_threshold": 200})
+        assert response.status_code == 422
+
+    def test_patch_detection_config_rejects_immutable_fields(self, client: TestClient) -> None:
+        response = client.patch("/api/detection/config", json={"backend": "openai_compatible"})
+        assert response.status_code == 422
+
+    def test_patch_detection_config_empty_body(self, client: TestClient) -> None:
+        response = client.patch("/api/detection/config", json={})
+        assert response.status_code == 400
 
 
 class TestWebSocket:

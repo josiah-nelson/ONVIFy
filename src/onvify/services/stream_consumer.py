@@ -63,6 +63,7 @@ class StreamConsumer:
         self._target_interval = target_interval
         self._tasks: dict[UUID, asyncio.Task[None]] = {}
         self._frame_queues: dict[UUID, asyncio.Queue[bytes]] = {}
+        self._pipelines: dict[UUID, InferencePipeline] = {}
 
     @property
     def active_cameras(self) -> set[UUID]:
@@ -79,6 +80,30 @@ class StreamConsumer:
 
     def get_frame_queue(self, camera_id: UUID) -> asyncio.Queue[bytes] | None:
         return self._frame_queues.get(camera_id)
+
+    def update_inference_config(
+        self,
+        *,
+        motion_sensitivity: int | None = None,
+        confidence_threshold: float | None = None,
+        cooldown_seconds: float | None = None,
+        target_interval: float | None = None,
+    ) -> None:
+        if motion_sensitivity is not None:
+            self._motion_sensitivity = motion_sensitivity
+        if confidence_threshold is not None:
+            self._confidence_threshold = confidence_threshold
+        if cooldown_seconds is not None:
+            self._cooldown_seconds = cooldown_seconds
+        if target_interval is not None:
+            self._target_interval = target_interval
+
+        for pipeline in self._pipelines.values():
+            pipeline.update_config(
+                motion_sensitivity=motion_sensitivity,
+                confidence_threshold=confidence_threshold,
+                cooldown_seconds=cooldown_seconds,
+            )
 
     def start_camera(self, camera: Camera) -> None:
         if camera.id in self._tasks and not self._tasks[camera.id].done():
@@ -104,6 +129,7 @@ class StreamConsumer:
             return
         self._tasks.pop(camera_id, None)
         self._frame_queues.pop(camera_id, None)
+        self._pipelines.pop(camera_id, None)
 
     def stop_camera(self, camera_id: UUID) -> None:
         task = self._tasks.pop(camera_id, None)
@@ -128,6 +154,7 @@ class StreamConsumer:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
         self._frame_queues.clear()
+        self._pipelines.clear()
 
     async def _set_status(self, camera_id: UUID, status: CameraStatus) -> None:
         self._manager.set_status(camera_id, status)
@@ -147,41 +174,45 @@ class StreamConsumer:
                 confidence_threshold=self._confidence_threshold,
                 cooldown_seconds=self._cooldown_seconds,
             )
+            self._pipelines[camera.id] = pipeline
 
-        backoff = self._reconnect_base
-        primary = camera.primary_stream
-        while True:
-            try:
-                await self._set_status(camera.id, CameraStatus.CONNECTING)
-                if primary is None:
+        try:
+            backoff = self._reconnect_base
+            primary = camera.primary_stream
+            while True:
+                try:
+                    await self._set_status(camera.id, CameraStatus.CONNECTING)
+                    if primary is None:
+                        await self._set_status(camera.id, CameraStatus.OFFLINE)
+                        logger.warning("no_primary_stream", camera_id=str(camera.id))
+                        return
+
+                    if primary.stream_type == StreamType.MJPEG:
+                        await self._consume_mjpeg(camera, primary.url, pipeline)
+                    else:
+                        await self._consume_rtsp(camera, primary.url, pipeline)
+
+                except asyncio.CancelledError:
                     await self._set_status(camera.id, CameraStatus.OFFLINE)
-                    logger.warning("no_primary_stream", camera_id=str(camera.id))
                     return
-
-                if primary.stream_type == StreamType.MJPEG:
-                    await self._consume_mjpeg(camera, primary.url, pipeline)
+                except Exception as exc:
+                    await self._set_status(camera.id, CameraStatus.ERROR)
+                    safe = _safe_url(primary.url) if primary else "unknown"
+                    logger.error(
+                        "stream_consumer_error",
+                        camera_id=str(camera.id),
+                        backoff=backoff,
+                        error=str(exc),
+                        url=safe,
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, self._reconnect_max)
+                    if pipeline:
+                        pipeline.reset()
                 else:
-                    await self._consume_rtsp(camera, primary.url, pipeline)
-
-            except asyncio.CancelledError:
-                await self._set_status(camera.id, CameraStatus.OFFLINE)
-                return
-            except Exception as exc:
-                await self._set_status(camera.id, CameraStatus.ERROR)
-                safe = _safe_url(primary.url) if primary else "unknown"
-                logger.error(
-                    "stream_consumer_error",
-                    camera_id=str(camera.id),
-                    backoff=backoff,
-                    error=str(exc),
-                    url=safe,
-                )
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, self._reconnect_max)
-                if pipeline:
-                    pipeline.reset()
-            else:
-                backoff = self._reconnect_base
+                    backoff = self._reconnect_base
+        finally:
+            self._pipelines.pop(camera.id, None)
 
     async def _consume_mjpeg(self, camera: Camera, url: str, pipeline: InferencePipeline | None) -> None:
         from onvify.services.mjpeg import decode_jpeg_frame, pull_mjpeg_frames

@@ -58,7 +58,7 @@ Outstanding work from initial scaffolding. Items are roughly ordered by dependen
 ## Streams and Detection API
 
 - [x] **Streams endpoint** — Implement `GET /api/streams/status` to return active stream status, reader count, and byte counters (via MediaMTX API).
-- [ ] **Detection config endpoint** — Implement `GET/PATCH /api/detection/config` to view and update inference settings at runtime.
+- [x] **Detection config endpoint** — Implement `GET/PATCH /api/detection/config` to view and update inference settings at runtime.
 
 ## Observability
 

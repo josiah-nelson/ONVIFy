@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Annotated, Any
-from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
 import httpx
@@ -12,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from onvify.api.dependencies import get_camera_manager, get_settings, get_stream_consumer
+from onvify.api.redaction import redact_url
 from onvify.config import Settings
 from onvify.services.camera_manager import CameraManager
 from onvify.services.mjpeg import mjpeg_response_stream
@@ -20,15 +20,6 @@ from onvify.services.stream_consumer import StreamConsumer
 logger = structlog.get_logger()
 
 router = APIRouter()
-
-
-def _redact_url(url: str) -> str:
-    """Strip userinfo (credentials) from a URL before returning it to API consumers."""
-    parsed = urlparse(url)
-    if parsed.username:
-        redacted = parsed._replace(netloc=f"***@{parsed.hostname}" + (f":{parsed.port}" if parsed.port else ""))
-        return urlunparse(redacted)
-    return url
 
 
 ManagerDep = Annotated[CameraManager, Depends(get_camera_manager)]
@@ -49,7 +40,7 @@ async def list_streams(manager: ManagerDep, consumer: ConsumerDep) -> list[dict[
                 "camera_name": cam.name,
                 "status": cam.status.value,
                 "stream_type": primary.stream_type.value if primary else None,
-                "source_url": _redact_url(primary.url) if primary else None,
+                "source_url": redact_url(primary.url) if primary else None,
                 "consumer_active": cam.id in active,
                 "ai_active": cam.id in ai_active,
             }

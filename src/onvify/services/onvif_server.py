@@ -7,8 +7,12 @@ ONVIF device and media service endpoints that NVRs can query.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import re
 from typing import TYPE_CHECKING
+from xml.etree import ElementTree
 
 import structlog
 
@@ -35,6 +39,8 @@ _MAX_REQUEST_BODY = 1 * 1024 * 1024
 _PROFILE_TOKEN_PATTERN = re.compile(
     r"<\w+:?ProfileToken[^>]*>(.*?)</\w+:?ProfileToken>",
 )
+_PASSWORD_DIGEST_TYPE = "PasswordDigest"
+_PASSWORD_TEXT_TYPE = "PasswordText"
 
 
 def _extract_action(body: str) -> str | None:
@@ -45,6 +51,74 @@ def _extract_action(body: str) -> str | None:
 def _extract_profile_token(body: str) -> str | None:
     match = _PROFILE_TOKEN_PATTERN.search(body)
     return match.group(1).strip() if match else None
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _child_text(element: ElementTree.Element, name: str) -> str | None:
+    for child in element:
+        if _local_name(child.tag) == name:
+            return child.text or ""
+    return None
+
+
+def _username_token(body: str) -> ElementTree.Element | None:
+    try:
+        root = ElementTree.fromstring(body)
+    except ElementTree.ParseError:
+        return None
+    for element in root.iter():
+        if _local_name(element.tag) == "UsernameToken":
+            return element
+    return None
+
+
+def _password_type(token: ElementTree.Element) -> str:
+    for child in token:
+        if _local_name(child.tag) == "Password":
+            password_type = child.attrib.get("Type", "")
+            if password_type.endswith(_PASSWORD_DIGEST_TYPE):
+                return _PASSWORD_DIGEST_TYPE
+            return _PASSWORD_TEXT_TYPE
+    return _PASSWORD_TEXT_TYPE
+
+
+def _decode_nonce(nonce: str) -> bytes:
+    try:
+        return base64.b64decode(nonce, validate=True)
+    except ValueError:
+        return nonce.encode("utf-8")
+
+
+def _password_digest(nonce: str, created: str, password: str) -> str:
+    # WS-Security UsernameToken defines PasswordDigest as SHA-1 over nonce, Created, and password.
+    digest = hashlib.sha1()
+    digest.update(_decode_nonce(nonce))
+    digest.update(created.encode("utf-8"))
+    digest.update(password.encode("utf-8"))
+    return base64.b64encode(digest.digest()).decode("ascii")
+
+
+def _valid_username_token(body: str, username: str, password: str) -> bool:
+    token = _username_token(body)
+    if token is None:
+        return False
+
+    actual_username = _child_text(token, "Username")
+    actual_password = _child_text(token, "Password")
+    if actual_password is None or not hmac.compare_digest(actual_username or "", username):
+        return False
+
+    if _password_type(token) == _PASSWORD_TEXT_TYPE:
+        return hmac.compare_digest(actual_password, password)
+
+    nonce = _child_text(token, "Nonce")
+    created = _child_text(token, "Created")
+    if not nonce or not created:
+        return False
+    return hmac.compare_digest(actual_password, _password_digest(nonce, created, password))
 
 
 class ONVIFCameraServer:
@@ -103,6 +177,11 @@ class ONVIFCameraServer:
                 raw_body = await asyncio.wait_for(reader.readexactly(content_length), timeout=10.0)
                 body = raw_body.decode("utf-8", errors="replace")
 
+            if not self._is_authenticated(body):
+                fault = soap_fault("Sender", "Authentication failed")
+                self._write_response(writer, 401, fault)
+                return
+
             response_xml = self._dispatch(body)
             self._write_response(writer, 200, response_xml)
         except (TimeoutError, asyncio.IncompleteReadError, ConnectionResetError):
@@ -132,6 +211,15 @@ class ONVIFCameraServer:
             return get_scopes_response(self._camera)
         return soap_fault("Sender", f"Action not supported: {action}")
 
+    def _is_authenticated(self, body: str) -> bool:
+        username = self._camera.onvif_username
+        password = self._camera.onvif_password
+        if username is None and password is None:
+            return True
+        if username is None:
+            return False
+        return _valid_username_token(body, username, password or "")
+
     def _resolve_stream_uri(self, profile_token: str | None) -> str:
         if profile_token:
             for profile in self._camera.profiles:
@@ -142,7 +230,9 @@ class ONVIFCameraServer:
 
     @staticmethod
     def _write_response(writer: asyncio.StreamWriter, status: int, body: str) -> None:
-        reason = "OK" if status == 200 else "Internal Server Error"
+        reason = {200: "OK", 400: "Bad Request", 401: "Unauthorized", 500: "Internal Server Error"}.get(
+            status, "Internal Server Error"
+        )
         encoded = body.encode("utf-8")
         header = (
             f"HTTP/1.1 {status} {reason}\r\n"

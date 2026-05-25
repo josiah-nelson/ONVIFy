@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 
 import pytest
 
 from onvify.models.camera import Camera, Profile, Stream
-from onvify.services.onvif_server import ONVIFCameraServer, ONVIFServerManager, _extract_action
+from onvify.services.onvif_server import ONVIFCameraServer, ONVIFServerManager, _extract_action, _password_digest
 
 
 class TestExtractAction:
@@ -122,6 +123,89 @@ class TestONVIFCameraServer:
         finally:
             await server.stop()
 
+    async def test_requires_username_token_when_camera_has_onvif_credentials(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+
+        try:
+            response = await _send_soap_request("127.0.0.1", actual_port, _soap_request(""))
+            assert b"HTTP/1.1 401 Unauthorized" in response
+            assert b"Authentication failed" in response
+        finally:
+            await server.stop()
+
+    async def test_accepts_password_text_username_token(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+
+        try:
+            response = await _send_soap_request(
+                "127.0.0.1",
+                actual_port,
+                _soap_request(_password_text_token("operator", "secret")),
+            )
+            assert b"HTTP/1.1 200 OK" in response
+            assert b"GetDeviceInformationResponse" in response
+        finally:
+            await server.stop()
+
+    async def test_accepts_password_digest_username_token(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+
+        try:
+            response = await _send_soap_request(
+                "127.0.0.1",
+                actual_port,
+                _soap_request(_password_digest_token("operator", "secret")),
+            )
+            assert b"HTTP/1.1 200 OK" in response
+            assert b"GetDeviceInformationResponse" in response
+        finally:
+            await server.stop()
+
+    async def test_rejects_invalid_username_token(self) -> None:
+        camera = Camera(
+            name="Secure Cam",
+            source_streams=[Stream(url="rtsp://localhost/test")],
+            onvif_username="operator",
+            onvif_password="secret",
+        )
+        server = ONVIFCameraServer(camera, "127.0.0.1", 0)
+        await server.start()
+        actual_port = server._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+
+        try:
+            response = await _send_soap_request(
+                "127.0.0.1",
+                actual_port,
+                _soap_request(_password_text_token("operator", "wrong")),
+            )
+            assert b"HTTP/1.1 401 Unauthorized" in response
+        finally:
+            await server.stop()
+
 
 @pytest.mark.asyncio
 class TestONVIFServerManager:
@@ -158,3 +242,43 @@ async def _send_soap_request(host: str, port: int, body: str) -> bytes:
     writer.close()
     await writer.wait_closed()
     return response
+
+
+def _soap_request(security_header: str) -> str:
+    return (
+        '<?xml version="1.0"?>'
+        '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" '
+        'xmlns:tds="http://www.onvif.org/ver10/device/wsdl" '
+        'xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/'
+        'oasis-200401-wss-wssecurity-secext-1.0.xsd" '
+        'xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/'
+        'oasis-200401-wss-wssecurity-utility-1.0.xsd">'
+        f"{security_header}"
+        "<s:Body><tds:GetDeviceInformation/></s:Body>"
+        "</s:Envelope>"
+    )
+
+
+def _password_text_token(username: str, password: str) -> str:
+    return (
+        "<s:Header><wsse:Security><wsse:UsernameToken>"
+        f"<wsse:Username>{username}</wsse:Username>"
+        '<wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/'
+        f'oasis-200401-wss-username-token-profile-1.0#PasswordText">{password}</wsse:Password>'
+        "</wsse:UsernameToken></wsse:Security></s:Header>"
+    )
+
+
+def _password_digest_token(username: str, password: str) -> str:
+    nonce = base64.b64encode(b"fixed-nonce").decode("ascii")
+    created = "2026-05-25T21:35:00Z"
+    digest = _password_digest(nonce, created, password)
+    return (
+        "<s:Header><wsse:Security><wsse:UsernameToken>"
+        f"<wsse:Username>{username}</wsse:Username>"
+        '<wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/'
+        f'oasis-200401-wss-username-token-profile-1.0#PasswordDigest">{digest}</wsse:Password>'
+        f"<wsse:Nonce>{nonce}</wsse:Nonce>"
+        f"<wsu:Created>{created}</wsu:Created>"
+        "</wsse:UsernameToken></wsse:Security></s:Header>"
+    )

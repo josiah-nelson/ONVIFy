@@ -84,7 +84,7 @@ function statusClass(status: string): string {
 }
 
 function rejectionMessage(result: PromiseRejectedResult): string {
-  return result.reason instanceof Error ? result.reason.message : "Request failed";
+  return errorMessage(result.reason);
 }
 
 function errorMessage(error: unknown): string {
@@ -311,11 +311,15 @@ export default function App(): ReactElement {
                     state.cameras.map((camera) => (
                       <tr key={camera.id ?? camera.name} className="border-t border-border">
                         <td className="px-4 py-3 font-medium">{camera.name}</td>
-                        <td className="max-w-[18rem] truncate px-4 py-3">
-                          <span className="mr-2 rounded-md bg-muted px-2 py-1 text-xs font-medium uppercase">
-                            {cameraStreamType(camera)}
-                          </span>
-                          {cameraSourceUrl(camera) || "No source"}
+                        <td className="px-4 py-3">
+                          <div className="flex min-w-0 max-w-[18rem] items-center gap-2">
+                            <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs font-medium uppercase">
+                              {cameraStreamType(camera)}
+                            </span>
+                            <span className="min-w-0 truncate" title={cameraSourceUrl(camera)}>
+                              {cameraSourceUrl(camera) || "No source"}
+                            </span>
+                          </div>
                         </td>
                         <td className="px-4 py-3">{camera.ai_enabled ? "Enabled" : "Off"}</td>
                         <td className="px-4 py-3">
@@ -337,7 +341,7 @@ export default function App(): ReactElement {
                               variant="outline"
                               className="h-8 px-2 text-rose-700 hover:bg-rose-50"
                               onClick={() => void deleteCamera(camera)}
-                              disabled={!camera.id || formStatus.deletingCameraId === camera.id}
+                              disabled={!camera.id || formStatus.saving || formStatus.deletingCameraId === camera.id}
                               title="Delete camera"
                             >
                               <Trash2 className="h-4 w-4" />

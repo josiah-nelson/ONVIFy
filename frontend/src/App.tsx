@@ -1,6 +1,6 @@
 import { Activity, Camera, CircleAlert, RefreshCw, Server } from "lucide-react";
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -17,8 +17,8 @@ type Health = {
 type CameraRow = {
   id: string;
   name: string;
+  source_streams: Array<{ stream_type?: string }>;
   status: string;
-  stream_type: string;
   ai_enabled: boolean;
 };
 
@@ -70,10 +70,19 @@ function rejectionMessage(result: PromiseRejectedResult): string {
   return result.reason instanceof Error ? result.reason.message : "Request failed";
 }
 
+function cameraStreamType(camera: CameraRow): string {
+  return camera.source_streams[0]?.stream_type ?? "unknown";
+}
+
 export default function App(): ReactElement {
+  const refreshInFlight = useRef(false);
   const [state, setState] = useState<DashboardState>(initialState);
 
   const refresh = useCallback(async (): Promise<void> => {
+    if (refreshInFlight.current) {
+      return;
+    }
+    refreshInFlight.current = true;
     setState((current) => ({ ...current, loading: true, error: null }));
     try {
       const [healthResult, camerasResult, eventsResult] = await Promise.allSettled([
@@ -97,6 +106,8 @@ export default function App(): ReactElement {
         error: error instanceof Error ? error.message : "Unable to load dashboard data",
         loading: false
       }));
+    } finally {
+      refreshInFlight.current = false;
     }
   }, []);
 
@@ -159,7 +170,7 @@ export default function App(): ReactElement {
                     state.cameras.map((camera) => (
                       <tr key={camera.id} className="border-t border-border">
                         <td className="px-4 py-3 font-medium">{camera.name}</td>
-                        <td className="px-4 py-3 uppercase">{camera.stream_type}</td>
+                        <td className="px-4 py-3 uppercase">{cameraStreamType(camera)}</td>
                         <td className="px-4 py-3">{camera.ai_enabled ? "Enabled" : "Off"}</td>
                         <td className="px-4 py-3">
                           <span className={`rounded-md px-2 py-1 text-xs font-medium ${statusClass(camera.status)}`}>{camera.status}</span>

@@ -35,7 +35,7 @@ def _extract_log_context(scope: Scope) -> dict[str, str]:
     return _path_context(str(scope.get("path", "")))
 
 
-def bind_request_log_context(request: Request) -> None:
+async def bind_request_log_context(request: Request) -> None:
     """Bind routed path parameters after FastAPI has populated them."""
     context = _string_context(request.path_params)
     if context:

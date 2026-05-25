@@ -7,6 +7,8 @@ from uuid import uuid4
 
 import pytest
 import structlog
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
@@ -59,7 +61,8 @@ class TestStructlogContextMiddleware:
         assert contexts == [{}]
         assert structlog.contextvars.get_contextvars() == {}
 
-    def test_bind_request_log_context_uses_routed_path_params(self) -> None:
+    @pytest.mark.asyncio
+    async def test_bind_request_log_context_uses_routed_path_params(self) -> None:
         scope: Scope = {
             "type": "http",
             "path": "/ignored",
@@ -69,13 +72,14 @@ class TestStructlogContextMiddleware:
 
         structlog.contextvars.clear_contextvars()
         try:
-            bind_request_log_context(Request(scope))
+            await bind_request_log_context(Request(scope))
 
             assert structlog.contextvars.get_contextvars() == {"camera_id": "cam-1", "stream_id": "main"}
         finally:
             structlog.contextvars.clear_contextvars()
 
-    def test_bind_request_log_context_ignores_none_stream_id(self) -> None:
+    @pytest.mark.asyncio
+    async def test_bind_request_log_context_ignores_none_stream_id(self) -> None:
         scope: Scope = {
             "type": "http",
             "path": "/ignored",
@@ -85,8 +89,24 @@ class TestStructlogContextMiddleware:
 
         structlog.contextvars.clear_contextvars()
         try:
-            bind_request_log_context(Request(scope))
+            await bind_request_log_context(Request(scope))
 
             assert structlog.contextvars.get_contextvars() == {"camera_id": "cam-1"}
         finally:
             structlog.contextvars.clear_contextvars()
+
+    def test_dependency_context_is_visible_to_route_handler(self) -> None:
+        app = FastAPI()
+
+        @app.get(
+            "/api/cameras/{camera_id}/streams/{stream_id}",
+            dependencies=[Depends(bind_request_log_context)],
+        )
+        async def route(camera_id: str, stream_id: str) -> dict[str, str]:
+            return structlog.contextvars.get_contextvars()
+
+        with TestClient(app) as client:
+            response = client.get("/api/cameras/cam-1/streams/main")
+
+        assert response.status_code == 200
+        assert response.json() == {"camera_id": "cam-1", "stream_id": "main"}

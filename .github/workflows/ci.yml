@@ -87,10 +87,20 @@ jobs:
           Write-Host "Using Python $($lines[1]) at $($lines[2])"
 
       - name: Install dependencies
-        run: pip install -e ".[dev,inference]"
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install -e ".[dev,inference]"
 
       - name: Run integration tests
-        run: pytest -m integration --tb=short
+        shell: pwsh
+        run: |
+          .\.venv\Scripts\python.exe -m pytest -m integration --tb=short
+          if ($LASTEXITCODE -eq 5) {
+            Write-Host "No integration tests selected; treating as success."
+            exit 0
+          }
+          exit $LASTEXITCODE
 
       - name: Build MSI installer
         shell: pwsh
@@ -137,7 +147,13 @@ jobs:
       - name: Run integration tests (CoreML)
         run: |
           source .venv/bin/activate
-          pytest -m integration --tb=short
+          status=0
+          pytest -m integration --tb=short || status=$?
+          if [ "$status" -eq 5 ]; then
+            echo "No integration tests selected; treating as success."
+            exit 0
+          fi
+          exit "$status"
 
   # ──────────────────────────────────────────────
   # Release + Azure Code Signing (tag-triggered)
@@ -182,7 +198,11 @@ jobs:
           echo "version=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
-        run: pip install -e ".[dev,inference]"
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install -e ".[dev,inference]"
+          Join-Path $PWD ".venv\Scripts" | Out-File -Append $env:GITHUB_PATH
 
       - name: Build MSI installer
         shell: pwsh

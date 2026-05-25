@@ -38,7 +38,7 @@ class ServerSettings(BaseSettings):
 class InferenceSettings(BaseSettings):
     """AI detection pipeline configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="AI_")
+    model_config = SettingsConfigDict(env_prefix="AI_", validate_assignment=True)
 
     default_model: str = "yolov8n.pt"
     inference_frame_width: int = Field(640, ge=1)

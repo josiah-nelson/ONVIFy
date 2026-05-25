@@ -6,7 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi import status as http_status
 from pydantic import BaseModel, Field
 
@@ -54,6 +54,7 @@ async def get_detection_config(settings: SettingsDep) -> dict[str, object]:
 async def update_detection_config(
     body: UpdateDetectionConfigRequest,
     settings: SettingsDep,
+    request: Request,
 ) -> dict[str, object]:
     inf = settings.inference
     updates = body.model_dump(exclude_none=True)
@@ -65,8 +66,15 @@ async def update_detection_config(
         setattr(inf, key, value)
     after = {k: getattr(inf, k) for k in updates}
 
-    logger.info("detection_config_updated", before=before, after=after)
-    return _serialize_inference_config(inf)
+    logger.info(
+        "detection_config_updated",
+        before=before,
+        after=after,
+        client_host=request.client.host if request.client else "unknown",
+    )
+    result = _serialize_inference_config(inf)
+    result["persistent"] = False
+    return result
 
 
 @router.get("/events")
